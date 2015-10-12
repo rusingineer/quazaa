@@ -3,32 +3,35 @@
 
 #include <QDialog>
 
-namespace Ui {
-class CDialogImportSecurity;
+namespace Ui
+{
+class DialogImportSecurity;
 }
 
-namespace SecurityFilterType {
-	enum FilterType {
-		Quazaa, Shareaza, P2P, Dat
-	};
+namespace SecurityFilterType
+{
+enum FilterType
+{
+	Quazaa, Shareaza, P2P, Dat
+};
 }
 
-class CDialogImportSecurity : public QDialog
+class DialogImportSecurity : public QDialog
 {
 	Q_OBJECT
 
 public:
-	explicit CDialogImportSecurity(QWidget *parent = 0);
-	~CDialogImportSecurity();
+	explicit DialogImportSecurity( QWidget* parent = 0 );
+	~DialogImportSecurity();
 
 private slots:
 	void on_toolButtonChooseFile_clicked();
 	void on_pushButtonOK_clicked();
 	void on_pushButtonCancel_clicked();
-	void on_comboBoxFilterType_currentIndexChanged(int index);
+	void on_comboBoxFilterType_currentIndexChanged( int index );
 
 private:
-	Ui::CDialogImportSecurity *ui;
+	Ui::DialogImportSecurity* ui;
 };
 
 #endif // CDIALOGIMPORTSECURITY_H

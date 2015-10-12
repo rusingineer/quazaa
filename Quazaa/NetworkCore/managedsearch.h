@@ -29,16 +29,19 @@
 #include <QHash>
 #include "queryhit.h" // needed for signals
 
-class CQuery;
+#include "g2hostcache.h"
+#include "network.h"
 
-class CManagedSearch : public QObject
+class Query;
+
+class ManagedSearch : public QObject
 {
 	Q_OBJECT
 public:
 	QDateTime   m_tStarted;
 	bool        m_bActive;
 	bool        m_bPaused;
-	CQuery*     m_pQuery;
+	Query*     m_pQuery;
 
 	bool        m_bCanRequestKey;
 
@@ -50,7 +53,7 @@ public:
 
 	QUuid       m_oGUID;
 
-	CQueryHit*  m_pCachedHit;
+	QueryHit*   m_pCachedHit;
 	quint32     m_nCachedHits;
 
 	quint32     m_nCookie;
@@ -60,23 +63,28 @@ public:
 	QHash<QHostAddress, QDateTime> m_lSearchedNodes;
 
 public:
-	CManagedSearch(CQuery* pQuery, QObject* parent = NULL);
-	~CManagedSearch();
+	ManagedSearch( Query* pQuery, QObject* parent = NULL );
+	~ManagedSearch();
 
 	void start();
 	void stop();
 	void pause();
 
-	void execute( const QDateTime& tNowDT,   quint32* pnMaxPackets);
-	void searchG2(const QDateTime& tNowDT, quint32* pnMaxPackets);
-	void searchNeighbours(const QDateTime& tNowDT);
+	void execute( const QDateTime& tNowDT, quint32* pnMaxPackets );
+	void searchG2( const QDateTime& tNowDT, quint32* pnMaxPackets );
+	void searchNeighbours( const QDateTime& tNowDT );
 
-	void onHostAcknowledge(QHostAddress nHost, const QDateTime& tNow);
-	void onQueryHit(CQueryHit* pHits);
+	void sendG2Query( EndPoint pReceiver, SharedG2HostPtr pHost,
+					  quint32* pnMaxPackets, const QDateTime& tNowDT );
+	void requestG2QueryKey( SharedG2HostPtr pHost );
+	G2Node* findBestHubForRoutingG2( const G2Node* const pLastNeighbour );
+
+	void onHostAcknowledge( QHostAddress nHost, const QDateTime& tNow );
+	void onQueryHit( QueryHit* pHits );
 	void sendHits();
 
 signals:
-	void onHit(QueryHitSharedPtr);
+	void onHit( QueryHit* );
 	void statsUpdated();
 	void stateChanged();
 

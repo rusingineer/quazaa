@@ -31,27 +31,27 @@
 
 class QSqlDatabase;
 
-class CSharedFile : public CFile
+class SharedFile : public File
 {
 
 public:
 	bool	m_bShared;
 
 public:
-	explicit CSharedFile(QObject* parent = NULL);
-	explicit CSharedFile(const QString& file, QObject* parent = NULL);
-	explicit CSharedFile(const QFile& file, QObject* parent = NULL);
-	explicit CSharedFile(const QDir& dir, const QString& file, QObject* parent = NULL);
-	explicit CSharedFile(const QFileInfo& fileinfo, QObject* parent = NULL);
+	explicit SharedFile( QObject* parent = NULL );
+	explicit SharedFile( const QString& file, QObject* parent = NULL );
+	explicit SharedFile( const QFile& file, QObject* parent = NULL );
+	explicit SharedFile( const QDir& dir, const QString& file, QObject* parent = NULL );
+	explicit SharedFile( const QFileInfo& fileinfo, QObject* parent = NULL );
 
-	~CSharedFile() {}
+	~SharedFile() {}
 
-	void serialize(QSqlDatabase* pDatabase);
+	void serialize( QSqlDatabase* pDatabase );
 
 private:
 	void setup();
 };
 
-typedef QSharedPointer<CSharedFile> CSharedFilePtr;
+typedef QSharedPointer<SharedFile> SharedFilePtr;
 
 #endif // SHAREDFILE_H

@@ -34,11 +34,11 @@
 #include <QMenu>
 #include <QKeyEvent>
 
-CWidgetDiscovery::CWidgetDiscovery(QWidget* parent) :
-	QMainWindow(parent),
-	ui(new Ui::CWidgetDiscovery)
+CWidgetDiscovery::CWidgetDiscovery( QWidget* parent ) :
+	QMainWindow( parent ),
+	ui( new Ui::CWidgetDiscovery )
 {
-	ui->setupUi(this);
+	ui->setupUi( this );
 
 	m_pDiscoveryMenu = new QMenu( this );
 	m_pDiscoveryMenu->addAction( ui->actionDiscoveryAddService );
@@ -48,23 +48,22 @@ CWidgetDiscovery::CWidgetDiscovery(QWidget* parent) :
 
 	restoreState( quazaaSettings.WinMain.DiscoveryToolbar );
 
-	tableViewDiscovery = new CTableView();
-	tableViewDiscovery->verticalHeader()->setVisible( false );
-	ui->verticalLayoutDiscoveryTable->addWidget( tableViewDiscovery );
+	m_pTableViewDiscovery = new CTableView( this );
+	ui->verticalLayoutDiscoveryTable->addWidget( m_pTableViewDiscovery );
 
-	connect( tableViewDiscovery, &CTableView::clicked,
+	connect( m_pTableViewDiscovery, &CTableView::clicked,
 			 this, &CWidgetDiscovery::tableViewDiscovery_clicked );
-	connect( tableViewDiscovery, &CTableView::doubleClicked,
+	connect( m_pTableViewDiscovery, &CTableView::doubleClicked,
 			 this, &CWidgetDiscovery::tableViewDiscovery_doubleClicked );
-	connect( tableViewDiscovery, &CTableView::customContextMenuRequested,
+	connect( m_pTableViewDiscovery, &CTableView::customContextMenuRequested,
 			 this, &CWidgetDiscovery::tableViewDiscovery_customContextMenuRequested );
 
-	m_pDiscoveryList = new CDiscoveryTableModel( this, tableView() );
+	m_pDiscoveryList = new DiscoveryTableModel( this, tableView() );
 	setModel( m_pDiscoveryList );
-	m_pDiscoveryList->sort( tableViewDiscovery->horizontalHeader()->sortIndicatorSection(),
-							tableViewDiscovery->horizontalHeader()->sortIndicatorOrder()    );
+	m_pDiscoveryList->sort( m_pTableViewDiscovery->horizontalHeader()->sortIndicatorSection(),
+							m_pTableViewDiscovery->horizontalHeader()->sortIndicatorOrder()    );
 
-	tableViewDiscovery->horizontalHeader()->setStretchLastSection( false );
+	m_pTableViewDiscovery->horizontalHeader()->setStretchLastSection( false );
 	setSkin();
 
 	enum Column
@@ -85,60 +84,66 @@ CWidgetDiscovery::CWidgetDiscovery(QWidget* parent) :
 	};
 
 	// Set up header sizes
-	if ( !tableViewDiscovery->horizontalHeader()->restoreState(
+	if ( !m_pTableViewDiscovery->horizontalHeader()->restoreState(
 			 quazaaSettings.WinMain.DiscoveryHeader ) )
 	{
-		QFontMetrics fm     = tableViewDiscovery->fontMetrics();
-		QHeaderView* header = tableViewDiscovery->horizontalHeader();
+		QFontMetrics fm     = m_pTableViewDiscovery->fontMetrics();
+		QHeaderView* header = m_pTableViewDiscovery->horizontalHeader();
 
-		header->resizeSection( CDiscoveryTableModel::TYPE,
+		header->resizeSection( DiscoveryTableModel::TYPE,
 							   fm.width( " -Banned GWC- " ) );
-		header->resizeSection( CDiscoveryTableModel::URL,
+		header->resizeSection( DiscoveryTableModel::URL,
 							   fm.width( " -http://cache2.bazookanetworks.com/g2/bazooka.php- " ) );
-		header->resizeSection( CDiscoveryTableModel::ACCESSED,
+		header->resizeSection( DiscoveryTableModel::ACCESSED,
 							   fm.width( " ---Mi 20.Mrz 2013 19:21:45--- " ) );
-		header->resizeSection( CDiscoveryTableModel::HOSTS,
+		header->resizeSection( DiscoveryTableModel::HOSTS,
 							   fm.width( " -Hosts- " ) );
-		header->resizeSection( CDiscoveryTableModel::TOTAL_HOSTS,
+		header->resizeSection( DiscoveryTableModel::TOTAL_HOSTS,
 							   fm.width( " -Total Hosts- " ) );
-		header->resizeSection( CDiscoveryTableModel::ALTERNATE_SERVICES,
+		header->resizeSection( DiscoveryTableModel::ALTERNATE_SERVICES,
 							   fm.width( " -Alt. Services- " ) );
-		header->resizeSection( CDiscoveryTableModel::FAILURES,
+		header->resizeSection( DiscoveryTableModel::FAILURES,
 							   fm.width( " -Failures- " ) );
+
 #if ENABLE_DISCOVERY_DEBUGGING
-		header->resizeSection( CDiscoveryTableModel::RATING,
+		header->resizeSection( DiscoveryTableModel::RATING,
 							   fm.width( " -Rating- " ) );
-		header->resizeSection( CDiscoveryTableModel::MULTIPLICATOR,
+		header->resizeSection( DiscoveryTableModel::MULTIPLICATOR,
 							   fm.width( " -Mult.- " ) );
-#endif
-		header->resizeSection( CDiscoveryTableModel::PONG,
+#endif // ENABLE_DISCOVERY_DEBUGGING
+
+		header->resizeSection( DiscoveryTableModel::PONG,
 							   fm.width( " Some space to fill in the pong reply " ) );
 	}
 }
 
 CWidgetDiscovery::~CWidgetDiscovery()
 {
-	delete ui; // Note: This does also take care of m_pDiscoveryMenu and m_pDiscoveryList.
-	delete tableViewDiscovery; // TODO: check whether this is necessary...
+	delete ui;
+	/* Note: This does also take care of:
+	 *       * m_pDiscoveryMenu
+	 *       * m_pDiscoveryList
+	 *       * m_pTableViewDiscovery
+	 */
 }
 
-void CWidgetDiscovery::setModel(QAbstractItemModel* model)
+void CWidgetDiscovery::setModel( QAbstractItemModel* model )
 {
-	tableViewDiscovery->setModel( model );
+	m_pTableViewDiscovery->setModel( model );
 }
 
 QWidget* CWidgetDiscovery::tableView()
 {
-	return tableViewDiscovery;
+	return m_pTableViewDiscovery;
 }
 
 void CWidgetDiscovery::saveWidget()
 {
 	quazaaSettings.WinMain.DiscoveryToolbar = saveState();
-	quazaaSettings.WinMain.DiscoveryHeader  = tableViewDiscovery->horizontalHeader()->saveState();
+	quazaaSettings.WinMain.DiscoveryHeader  = m_pTableViewDiscovery->horizontalHeader()->saveState();
 }
 
-void CWidgetDiscovery::changeEvent(QEvent* e)
+void CWidgetDiscovery::changeEvent( QEvent* e )
 {
 	switch ( e->type() )
 	{
@@ -155,7 +160,7 @@ void CWidgetDiscovery::changeEvent(QEvent* e)
 	QMainWindow::changeEvent( e );
 }
 
-void CWidgetDiscovery::keyPressEvent(QKeyEvent *e)
+void CWidgetDiscovery::keyPressEvent( QKeyEvent* e )
 {
 	switch ( e->key() )
 	{
@@ -181,16 +186,16 @@ void CWidgetDiscovery::keyPressEvent(QKeyEvent *e)
 	QMainWindow::keyPressEvent( e );
 }
 
-void CWidgetDiscovery::update()
+/*void CWidgetDiscovery::update()
 {
 	// TODO: improve
 
 	m_pDiscoveryList->updateAll();
-}
+}*/
 
-void CWidgetDiscovery::tableViewDiscovery_customContextMenuRequested(const QPoint& point)
+void CWidgetDiscovery::tableViewDiscovery_customContextMenuRequested( const QPoint& point )
 {
-	QModelIndex index = tableViewDiscovery->indexAt( point );
+	QModelIndex index = m_pTableViewDiscovery->indexAt( point );
 
 	if ( index.isValid() )
 	{
@@ -219,7 +224,7 @@ void CWidgetDiscovery::tableViewDiscovery_customContextMenuRequested(const QPoin
 	m_pDiscoveryMenu->popup( QCursor::pos() );
 }
 
-void CWidgetDiscovery::tableViewDiscovery_doubleClicked(const QModelIndex& index)
+void CWidgetDiscovery::tableViewDiscovery_doubleClicked( const QModelIndex& index )
 {
 	if ( index.isValid() )
 	{
@@ -234,7 +239,7 @@ void CWidgetDiscovery::tableViewDiscovery_doubleClicked(const QModelIndex& index
 	}
 }
 
-void CWidgetDiscovery::tableViewDiscovery_clicked(const QModelIndex& index)
+void CWidgetDiscovery::tableViewDiscovery_clicked( const QModelIndex& index )
 {
 	if ( index.isValid() )
 	{
@@ -263,7 +268,7 @@ void CWidgetDiscovery::tableViewDiscovery_clicked(const QModelIndex& index)
 
 void CWidgetDiscovery::setSkin()
 {
-	tableViewDiscovery->setStyleSheet( skinSettings.listViews );
+	m_pTableViewDiscovery->setStyleSheet( skinSettings.listViews );
 }
 
 void CWidgetDiscovery::on_actionDiscoveryAddService_triggered()
@@ -278,9 +283,9 @@ void CWidgetDiscovery::on_actionDiscoveryBrowseStatistics_triggered()
 
 void CWidgetDiscovery::on_actionDiscoveryRemoveService_triggered()
 {
-	QModelIndexList selection = tableViewDiscovery->selectionModel()->selectedRows();
+	QModelIndexList selection = m_pTableViewDiscovery->selectionModel()->selectedRows();
 
-	foreach( QModelIndex i, selection )
+	foreach( const QModelIndex & i, selection )
 	{
 		if ( i.isValid() )
 		{
@@ -293,7 +298,7 @@ void CWidgetDiscovery::on_actionDiscoveryRemoveService_triggered()
 
 void CWidgetDiscovery::on_actionDiscoveryQueryNow_triggered()
 {
-	QModelIndex index = tableViewDiscovery->currentIndex();
+	QModelIndex index = m_pTableViewDiscovery->currentIndex();
 
 	if ( index.isValid() )
 	{
@@ -305,7 +310,7 @@ void CWidgetDiscovery::on_actionDiscoveryQueryNow_triggered()
 
 void CWidgetDiscovery::on_actionDiscoveryAdvertise_triggered()
 {
-	QModelIndex index = tableViewDiscovery->currentIndex();
+	QModelIndex index = m_pTableViewDiscovery->currentIndex();
 
 	if ( index.isValid() )
 	{
@@ -317,12 +322,12 @@ void CWidgetDiscovery::on_actionDiscoveryAdvertise_triggered()
 
 void CWidgetDiscovery::on_actionDiscoveryProperties_triggered()
 {
-	QModelIndex index = tableViewDiscovery->currentIndex();
+	QModelIndex index = m_pTableViewDiscovery->currentIndex();
 
 	if ( index.isValid() )
 	{
 
-	//see https://qt-project.org/wiki/New_Signal_Slot_Syntax
+		//see https://qt-project.org/wiki/New_Signal_Slot_Syntax
 
 // TODO: Pop up dialog to edit service
 	}

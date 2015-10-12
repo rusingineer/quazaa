@@ -31,11 +31,11 @@
 #include "tableview.h"
 #include "discovery.h"
 
-class CDiscoveryTableModel;
+class DiscoveryTableModel;
 
 namespace Ui
 {
-	class CWidgetDiscovery;
+class CWidgetDiscovery;
 }
 
 class CWidgetDiscovery : public QMainWindow
@@ -43,33 +43,33 @@ class CWidgetDiscovery : public QMainWindow
 	Q_OBJECT
 
 public:
-	CDiscoveryTableModel* m_pDiscoveryList;
-	QActionGroup* actionGroupDiscoveryNavigation;
+	DiscoveryTableModel* m_pDiscoveryList;
+	//QActionGroup* actionGroupDiscoveryNavigation;
 
 private:
 	Ui::CWidgetDiscovery* ui;
 	QMenu* m_pDiscoveryMenu;
-	CTableView* tableViewDiscovery;
+	CTableView* m_pTableViewDiscovery;
 
 public:
-	CWidgetDiscovery(QWidget* parent = 0);
+	CWidgetDiscovery( QWidget* parent = 0 );
 	~CWidgetDiscovery();
 
-	void		setModel(QAbstractItemModel* model);
+	void		setModel( QAbstractItemModel* model );
 	QWidget*	tableView();
 	void		saveWidget();
 
 protected:
-	virtual void changeEvent(QEvent* e);
-	virtual void keyPressEvent(QKeyEvent *event);
+	virtual void changeEvent( QEvent* e );
+	virtual void keyPressEvent( QKeyEvent* event );
 
 public slots:
-	void update();
+	//void update();
 
 private slots:
-	void tableViewDiscovery_customContextMenuRequested(const QPoint &pos);
-	void tableViewDiscovery_doubleClicked(const QModelIndex &index);
-	void tableViewDiscovery_clicked(const QModelIndex &index);
+	void tableViewDiscovery_customContextMenuRequested( const QPoint& pos );
+	void tableViewDiscovery_doubleClicked( const QModelIndex& index );
+	void tableViewDiscovery_clicked( const QModelIndex& index );
 
 	void setSkin();
 

@@ -26,82 +26,87 @@
 #define WIDGETSEARCHTEMPLATE_H
 
 #include <QDialog>
-#include <QSortFilterProxyModel>
 #include <QMenu>
+
+#include "types.h"
 #include "searchtreemodel.h"
+#include "searchsortfilterproxymodel.h"
+#include "NetworkCore/queryhit.h"
 
 namespace Ui
 {
-	class CWidgetSearchTemplate;
+class WidgetSearchTemplate;
 }
 
-class CManagedSearch;
-class CQuery;
-//class CQueryHit;
-#include "NetworkCore/queryhit.h"
-#include "types.h"
+class ManagedSearch;
+class Query;
 
 namespace SearchState
 {
-		enum SearchState { Default, Stopped, Searching, Paused };
-};
+enum SearchState { Default, Stopped, Searching, Paused };
+}
 
-class CWidgetSearchTemplate : public QWidget
+class WidgetSearchTemplate : public QWidget
 {
 	Q_OBJECT
+private:
+	Ui::WidgetSearchTemplate* ui;
+	QMenu* searchMenu;
 
 public:
-	CWidgetSearchTemplate(QString searchString = "", QWidget* parent = 0);
-	~CWidgetSearchTemplate();
+	SearchTreeModel*            m_pSearchModel;
+	SearchSortFilterProxyModel* m_pSortModel;
+	ManagedSearch*              m_pSearch;
 
-	void StartSearch(CQuery* pQuery);
-	void PauseSearch();
-	void StopSearch();
-	void ClearSearch();
-	QModelIndex CurrentItem();
-
-	SearchTreeModel*		m_pSearchModel;
-	QSortFilterProxyModel*	m_pSortModel;
-	CManagedSearch*			m_pSearch;
+	SearchState::SearchState m_eSearchState;
+	QString m_sSearchString;
 
 	int m_nHubs;
 	int m_nLeaves;
 	int m_nHits;
 	int m_nFiles;
 
-	QString m_sSearchString;
-	SearchState::SearchState m_searchState;
+public:
+	WidgetSearchTemplate( QString searchString = "", QWidget* parent = 0 );
+	~WidgetSearchTemplate();
 
-	//void GetStats(quint32& nHubs, quint32& nLeaves, quint32& nHits);
+	void startSearch( Query* pQuery );
+	void pauseSearch();
+	void stopSearch();
+	void clearSearch();
+	QModelIndex currentItem() const;
 
-signals:
-	void statsUpdated(CWidgetSearchTemplate* thisSearch);
-	void stateChanged();
+	void filter( const SearchFilter::FilterControlData& rData );
+	SearchFilter::FilterControlData* getFilterDataCopy() const;
+	//void getStats(quint32& nHubs, quint32& nLeaves, quint32& nHits);
 
 protected:
-	void changeEvent(QEvent* e);
+	void changeEvent( QEvent* e );
 
 private:
-	Ui::CWidgetSearchTemplate* ui;
+	const Hash* const getHash() const;
 
-	QMenu *searchMenu;
+signals:
+	void statsUpdated( WidgetSearchTemplate* thisSearch );
+	void stateChanged();
 
-protected slots:
-	void OnStatsUpdated();
-	void OnStateChanged();
-	void Sort();
-
-public slots:
-	void saveHeaderState();
-	void loadHeaderState();
 private slots:
-	void on_treeViewSearchResults_doubleClicked(const QModelIndex &index);
-	void on_treeViewSearchResults_customContextMenuRequested(const QPoint &pos);
+	void on_treeViewSearchResults_doubleClicked( const QModelIndex& index );
+	void on_treeViewSearchResults_customContextMenuRequested( const QPoint& pos );
 	void on_actionDownload_triggered();
 	void on_actionViewReviews_triggered();
 	void on_actionVirusTotalCheck_triggered();
 	void setSkin();
 	void on_actionBanNode_triggered();
+
+protected slots:
+	void onStatsUpdated();
+	void onStateChanged();
+	void sort();
+
+public slots:
+	void saveHeaderState();
+	void loadHeaderState();
 };
 
 #endif // WIDGETSEARCHTEMPLATE_H

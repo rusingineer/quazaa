@@ -33,7 +33,7 @@
 
 #include "networkconnection.h"
 
-class CRateController : public QObject
+class RateController : public QObject
 {
 	Q_OBJECT
 protected:
@@ -44,25 +44,25 @@ protected:
 
 	QElapsedTimer   m_tStopWatch;
 
-	QSet<CNetworkConnection*>   m_lSockets;
+	QSet<NetworkConnection*>   m_lSockets;
 
 public:
 	TCPBandwidthMeter	m_mDownload;
 	TCPBandwidthMeter	m_mUpload;
 
 public:
-	CRateController(QMutex* pMutex, QObject* parent = 0);
-	void addSocket(CNetworkConnection* pSock);
-	void removeSocket(CNetworkConnection* pSock);
+	RateController( QMutex* pMutex, QObject* parent = 0 );
+	void addSocket( NetworkConnection* pSock );
+	void removeSocket( NetworkConnection* pSock );
 
-	void setDownloadLimit(qint32 nLimit)
+	void setDownloadLimit( qint32 nLimit )
 	{
-		systemLog.postLog(LogSeverity::Debug, QString("New download limit: %1").arg(nLimit));
+		systemLog.postLog( LogSeverity::Debug, QString( "New download limit: %1" ).arg( nLimit ) );
 		m_nDownloadLimit = nLimit;
 	}
-	void setUploadLimit(qint32 nLimit)
+	void setUploadLimit( qint32 nLimit )
 	{
-		systemLog.postLog(LogSeverity::Debug, QString("New upload limit: %1").arg(nLimit));
+		systemLog.postLog( LogSeverity::Debug, QString( "New upload limit: %1" ).arg( nLimit ) );
 		m_nUploadLimit = nLimit;
 	}
 	qint32 uploadLimit() const
@@ -76,11 +76,11 @@ public:
 
 	quint32 downloadSpeed()
 	{
-		return m_mDownload.AvgUsage();
+		return m_mDownload.avgUsage();
 	}
 	quint32 uploadSpeed()
 	{
-		return m_mUpload.AvgUsage();
+		return m_mUpload.avgUsage();
 	}
 
 public slots:

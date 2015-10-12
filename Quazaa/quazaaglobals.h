@@ -25,27 +25,32 @@
 #ifndef QUAZAAGLOBALS_H
 #define QUAZAAGLOBALS_H
 
-#include <QObject>
+#include <QString>
 
 #define LOG_QUERY_HANDLING 0
+#define LOG_MALFORMATTED_QUERIES 0
+#define LOG_ROUTED_PACKETS 0
+#define LOG_CONNECTIONS 0
 
-class CQuazaaGlobals : public QObject
+class QuazaaGlobals
 {
-		Q_OBJECT
 public:
-		static QString APPLICATION_NAME();
-		static QString APPLICATION_VERSION();
-		static QString APPLICATION_VERSION_STRING();
-		static QString APPLICATION_FINGERPRINT();
-		static QString APPLICATION_ORGANIZATION_NAME();
-		static QString APPLICATION_ORGANIZATION_DOMAIN();
-		static QString USER_AGENT_STRING();
-		static QString VENDOR_CODE();
-		static QString MEDIA_OPEN_FILTER();
-		static QString DATA_PATH();
-		static QString STORAGE_PATH();
-		static QString SETTINGS_PATH();
-		static QString INI_FILE();
+	static QString APPLICATION_NAME();
+	static QString APPLICATION_VERSION();
+	static QString APPLICATION_VERSION_STRING();
+	static QString APPLICATION_FINGERPRINT();
+	static QString APPLICATION_ORGANIZATION_NAME();
+	static QString APPLICATION_ORGANIZATION_DOMAIN();
+	static QString USER_AGENT_STRING();
+	static QString VENDOR_CODE();
+	static QString MEDIA_OPEN_FILTER();
+	static QString DATA_PATH();
+	static QString STORAGE_PATH();
+	static QString SETTINGS_PATH();
+	static QString INI_FILE();
+
+private:
+	static QString HOME_PATH();
 };
 
 #endif // QUAZAAGLOBALS_H

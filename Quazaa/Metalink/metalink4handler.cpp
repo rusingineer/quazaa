@@ -29,30 +29,30 @@
 
 using namespace URI;
 
-CMetalink4Handler::CMetalink4Handler(QFile& oFile) :
-	CMetalinkHandler( oFile )
+Metalink4Handler::Metalink4Handler( QFile& oFile ) :
+	MetalinkHandler( oFile )
 {
-/*
+	/*
 
- <?xml version="1.0" encoding="UTF-8"?>
- <metalink xmlns="urn:ietf:params:xml:ns:metalink">
-   <published>2009-05-15T12:23:23Z</published>
-   <file name="example.ext">
-	 <size>14471447</size>
-	 <identity>Example</identity>
-	 <version>1.0</version>
-	 <language>en</language>
-	 <description>
-	 A description of the example file for download.
-	 </description>
-	 <hash type="sha-256">3d6fece8033d146d8611eab4f032df738c8c1283620fd02a1f2bfec6e27d590d</hash>
-	 <url location="de" priority="1">ftp://ftp.example.com/example.ext</url>
-	 <url location="fr" priority="1">http://example.com/example.ext</url>
-	 <metaurl mediatype="torrent" priority="2">http://example.com/example.ext.torrent</metaurl>
-   </file>
- </metalink>
+	 <?xml version="1.0" encoding="UTF-8"?>
+	 <metalink xmlns="urn:ietf:params:xml:ns:metalink">
+	   <published>2009-05-15T12:23:23Z</published>
+	   <file name="example.ext">
+		 <size>14471447</size>
+		 <identity>Example</identity>
+		 <version>1.0</version>
+		 <language>en</language>
+		 <description>
+		 A description of the example file for download.
+		 </description>
+		 <hash type="sha-256">3d6fece8033d146d8611eab4f032df738c8c1283620fd02a1f2bfec6e27d590d</hash>
+		 <url location="de" priority="1">ftp://ftp.example.com/example.ext</url>
+		 <url location="fr" priority="1">http://example.com/example.ext</url>
+		 <metaurl mediatype="torrent" priority="2">http://example.com/example.ext.torrent</metaurl>
+	   </file>
+	 </metalink>
 
-*/
+	*/
 
 	quint16 fileID = 0;
 	QList<MetaFile> lFiles;
@@ -79,11 +79,11 @@ CMetalink4Handler::CMetalink4Handler(QFile& oFile) :
 	m_vFiles.reserve( lFiles.size() );
 
 	fileID = 0;
-	foreach ( MetaFile oFile, lFiles )
+	for ( int i = 0, nSize = lFiles.size(); i < nSize; ++i )
 	{
-		Q_ASSERT ( oFile.m_nID == fileID ); // verify sort order
-		oFile.m_nID = fileID;
-		m_vFiles[fileID++] = oFile;
+		Q_ASSERT ( lFiles[i].m_nID == fileID ); // verify sort order
+		lFiles[i].m_nID = fileID;
+		m_vFiles[fileID++] = lFiles[i];
 	}
 
 	m_bValid = fileID;
@@ -91,7 +91,7 @@ CMetalink4Handler::CMetalink4Handler(QFile& oFile) :
 	//TODO: Parse more data within the metalink
 }
 
-CDownload* CMetalink4Handler::file(const unsigned int& ID) const
+Download* Metalink4Handler::file( const unsigned int& ID ) const
 {
 	MetaFile oFile = m_vFiles[ ID ];
 
@@ -99,10 +99,10 @@ CDownload* CMetalink4Handler::file(const unsigned int& ID) const
 	// TODO: Implement.
 
 
-	return new CDownload();
+	return new Download();
 }
 
-bool CMetalink4Handler::parseFile(QList<MetaFile> &lFiles, quint16 ID)
+bool Metalink4Handler::parseFile( QList<MetaFile>& lFiles, quint16 ID )
 {
 	MetaFile oCurrentFile( ID );
 
@@ -115,18 +115,22 @@ bool CMetalink4Handler::parseFile(QList<MetaFile> &lFiles, quint16 ID)
 		{
 			if ( vAttributes.hasAttribute( "type" ) )
 			{
-				QString urn = "urn:" + vAttributes.value( "type" ).toString().trimmed() + ":" +
-								  m_oMetaLink.readElementText();
-				CHash* pHash = CHash::fromURN( urn );
+				const QString sType = vAttributes.value( "type" ).toString().trimmed();
+				const QString sUrn = "urn:" + sType + ":" + m_oMetaLink.readElementText();
+				Hash* pHash = Hash::fromURN( sUrn );
 
 				if ( pHash )
 				{
-					oCurrentFile.m_lHashes.append( pHash );
+					if ( !oCurrentFile.m_vHashes.insert( pHash ) )
+					{
+						postParsingInfo( m_oMetaLink.lineNumber(),
+										 tr( "Found and ignored conflicting hash of type \"%1\" within <hash> tag." ).arg( sType ) );
+					}
 				}
 				else
 				{
 					postParsingInfo( m_oMetaLink.lineNumber(),
-									 tr( "Found unsupported hash of type \"%1\" within <hash> tag." ) );
+									 tr( "Found unsupported hash of type \"%1\" within <hash> tag." ).arg( sType ) );
 					continue;
 				}
 			}
@@ -232,7 +236,7 @@ bool CMetalink4Handler::parseFile(QList<MetaFile> &lFiles, quint16 ID)
 				else if ( !sMediaType.compare( "magnet" ) )
 				{
 					uri.m_nType = uriMagnet;
-					uri.m_pMagnet = new CMagnet( m_oMetaLink.readElementText() );
+					uri.m_pMagnet = new Magnet( m_oMetaLink.readElementText() );
 
 					if ( !uri.m_pMagnet->isValid() )
 					{

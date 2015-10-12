@@ -30,9 +30,9 @@
 
 // Portions of this code are borrowed from Shareaza
 
-CHubHorizonPool HubHorizonPool;
+HubHorizonPool hubHorizonPool;
 
-CHubHorizonPool::CHubHorizonPool()
+HubHorizonPool::HubHorizonPool()
 {
 	m_pBuffer	= 0;
 	m_nBuffer	= 0;
@@ -41,60 +41,60 @@ CHubHorizonPool::CHubHorizonPool()
 	m_nActive	= 0;
 }
 
-CHubHorizonPool::~CHubHorizonPool()
+HubHorizonPool::~HubHorizonPool()
 {
-	if(m_pBuffer != 0)
+	if ( m_pBuffer != 0 )
 	{
 		delete [] m_pBuffer;
 	}
 }
 
-void CHubHorizonPool::setup()
+void HubHorizonPool::setup()
 {
-	if(m_pBuffer != 0)
+	if ( m_pBuffer != 0 )
 	{
 		delete [] m_pBuffer;
 	}
 
 	m_nBuffer	= quazaaSettings.Gnutella2.HubHorizonSize;
-	m_pBuffer	= new CHubHorizonHub[ m_nBuffer ];
+	m_pBuffer	= new HubHorizonHub[ m_nBuffer ];
 	m_pActive	= 0;
 	m_nActive	= 0;
 	m_pFree		= m_pBuffer;
 
-	for(quint32 nItem = 0 ; nItem < m_nBuffer ; nItem++)
+	for ( quint32 nItem = 0 ; nItem < m_nBuffer ; nItem++ )
 	{
-		m_pBuffer[ nItem ].m_pNext	= (nItem < m_nBuffer - 1)
+		m_pBuffer[ nItem ].m_pNext	= ( nItem < m_nBuffer - 1 )
 									  ? &m_pBuffer[ nItem + 1 ] : 0;
 	}
 }
 
-void CHubHorizonPool::clear()
+void HubHorizonPool::clear()
 {
 	m_pActive	= 0;
 	m_nActive	= 0;
 	m_pFree		= m_pBuffer;
 
-	for(quint32 nItem = 0 ; nItem < m_nBuffer ; nItem++)
+	for ( quint32 nItem = 0 ; nItem < m_nBuffer ; nItem++ )
 	{
-		m_pBuffer[ nItem ].m_pNext	= (nItem < m_nBuffer - 1)
+		m_pBuffer[ nItem ].m_pNext	= ( nItem < m_nBuffer - 1 )
 									  ? &m_pBuffer[ nItem + 1 ] : 0;
 	}
 }
 
-CHubHorizonHub* CHubHorizonPool::add(CEndPoint oAddress)
+HubHorizonHub* HubHorizonPool::add( const EndPoint& rAddress )
 {
-	CHubHorizonHub* pHub = m_pActive;
-	for(; pHub ; pHub = pHub->m_pNext)
+	HubHorizonHub* pHub = m_pActive;
+	for ( ; pHub ; pHub = pHub->m_pNext )
 	{
-		if(pHub->m_oAddress == oAddress)
+		if ( pHub->m_oAddress == rAddress )
 		{
 			pHub->m_nReference ++;
 			return pHub;
 		}
 	}
 
-	if(m_nActive == m_nBuffer || m_pFree == 0)
+	if ( m_nActive == m_nBuffer || m_pFree == 0 )
 	{
 		return 0;
 	}
@@ -106,24 +106,24 @@ CHubHorizonHub* CHubHorizonPool::add(CEndPoint oAddress)
 	m_pActive = pHub;
 	m_nActive ++;
 
-	pHub->m_oAddress	= oAddress;
+	pHub->m_oAddress	= rAddress;
 	pHub->m_nReference	= 1;
 
 	return pHub;
 }
 
-void CHubHorizonPool::remove(CHubHorizonHub* pHub)
+void HubHorizonPool::remove( HubHorizonHub* pHub )
 {
-	CHubHorizonHub** ppPrev = &m_pActive;
+	HubHorizonHub** ppPrev = &m_pActive;
 
-	for(CHubHorizonHub* pSeek = *ppPrev ; pSeek ; pSeek = pSeek->m_pNext)
+	for ( HubHorizonHub* pSeek = *ppPrev ; pSeek ; pSeek = pSeek->m_pNext )
 	{
-		if(pHub == pSeek)
+		if ( pHub == pSeek )
 		{
 			*ppPrev = pHub->m_pNext;
 			pHub->m_pNext = m_pFree;
 			m_pFree = pHub;
-			m_nActive --;
+			--m_nActive;
 			break;
 		}
 
@@ -131,78 +131,78 @@ void CHubHorizonPool::remove(CHubHorizonHub* pHub)
 	}
 }
 
-CHubHorizonHub* CHubHorizonPool::find(CEndPoint oAddress)
+HubHorizonHub* HubHorizonPool::find( const EndPoint& rAddress )
 {
-	for(CHubHorizonHub* pHub = m_pActive ; pHub ; pHub = pHub->m_pNext)
+	for ( HubHorizonHub* pHub = m_pActive ; pHub ; pHub = pHub->m_pNext )
 	{
-		if(pHub->m_oAddress == oAddress)
+		if ( pHub->m_oAddress == rAddress )
 		{
 			return pHub;
 		}
 	}
 
-	return 0;
+	return NULL;
 }
 
-int CHubHorizonPool::addHorizonHubs(G2Packet* pPacket)
+int HubHorizonPool::addHorizonHubs( G2Packet* pPacket )
 {
 	int nCount = 0;
 
-	for(CHubHorizonHub* pHub = m_pActive ; pHub ; pHub = pHub->m_pNext)
+	for ( HubHorizonHub* pHub = m_pActive ; pHub ; pHub = pHub->m_pNext )
 	{
-		pPacket->writePacket("S", (pHub->m_oAddress.protocol() == QAbstractSocket::IPv4Protocol ? 6 : 18));
-		pPacket->writeHostAddress(&pHub->m_oAddress);
+		pPacket->writePacket( "S", ( pHub->m_oAddress.protocol() == QAbstractSocket::IPv4Protocol ? 6 : 18 ) );
+		pPacket->writeHostAddress( pHub->m_oAddress );
 
-		nCount++;
+		++nCount;
 	}
 
 	return nCount;
 }
 
-CHubHorizonGroup::CHubHorizonGroup()
+HubHorizonGroup::HubHorizonGroup()
 {
 	m_pList		= 0;
 	m_nCount	= 0;
 	m_nBuffer	= 0;
 }
 
-CHubHorizonGroup::~CHubHorizonGroup()
+HubHorizonGroup::~HubHorizonGroup()
 {
 	clear();
-	if(m_pList != 0)
+	if ( m_pList != 0 )
 	{
 		delete [] m_pList;
 	}
 }
 
-void CHubHorizonGroup::add(CEndPoint oAddress)
+void HubHorizonGroup::add( EndPoint oAddress )
 {
-	CHubHorizonHub** ppHub = m_pList;
+	HubHorizonHub** ppHub = m_pList;
 
-	for(quint32 nCount = m_nCount ; nCount ; nCount--, ppHub++)
+	for ( quint32 nCount = m_nCount; nCount; --nCount, ++ppHub )
 	{
-		if((*ppHub)->m_oAddress == oAddress)
+		if ( ( *ppHub )->m_oAddress == oAddress )
 		{
 			return;
 		}
 	}
 
-	CHubHorizonHub* pHub = HubHorizonPool.add(oAddress);
-	if(pHub == 0)
+	HubHorizonHub* pHub = hubHorizonPool.add( oAddress );
+	if ( pHub == 0 )
 	{
 		return;
 	}
 
-	if(m_nCount == m_nBuffer)
+	if ( m_nCount == m_nBuffer )
 	{
 		m_nBuffer += 8;
-		CHubHorizonHub** pList = new CHubHorizonHub*[ m_nBuffer ];
-		if(m_nCount)
+		HubHorizonHub** pList = new HubHorizonHub*[ m_nBuffer ];
+		if ( m_nCount )
 		{
-			memcpy(pList, m_pList, sizeof(CHubHorizonHub*) * m_nCount);
+			memcpy( pList, m_pList, sizeof( HubHorizonHub* ) * m_nCount );
 		}
 
-		if(m_pList)
+		if ( m_pList )
 		{
 			delete [] m_pList;
 		}
@@ -213,15 +213,15 @@ void CHubHorizonGroup::add(CEndPoint oAddress)
 	m_pList[ m_nCount++ ] = pHub;
 }
 
-void CHubHorizonGroup::clear()
+void HubHorizonGroup::clear()
 {
-	CHubHorizonHub** ppHub = m_pList;
+	HubHorizonHub** ppHub = m_pList;
 
-	for(quint32 nCount = m_nCount ; nCount ; nCount--, ppHub++)
+	for ( quint32 nCount = m_nCount ; nCount ; --nCount, ++ppHub )
 	{
-		if(-- ((*ppHub)->m_nReference) == 0)
+		if ( -- ( ( *ppHub )->m_nReference ) == 0 )
 		{
-			HubHorizonPool.remove(*ppHub);
+			hubHorizonPool.remove( *ppHub );
 		}
 	}
 

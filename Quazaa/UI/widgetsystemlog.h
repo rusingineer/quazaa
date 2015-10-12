@@ -31,31 +31,35 @@
 
 namespace Ui
 {
-	class CWidgetSystemLog;
+class WidgetSystemLog;
 }
 
-class CWidgetSystemLog : public QMainWindow
+class WidgetSystemLog : public QMainWindow
 {
 	Q_OBJECT
 public:
-	CWidgetSystemLog(QWidget* parent = 0);
-	~CWidgetSystemLog();
+	WidgetSystemLog( QWidget* parent = 0 );
+	~WidgetSystemLog();
 	void saveWidget();
-	QTime timeStamp;
 
 protected:
-	void changeEvent(QEvent* e);
+	void changeEvent( QEvent* e );
 
 private:
-	Ui::CWidgetSystemLog* ui;
-	QMenu* logMenu;
+	Ui::WidgetSystemLog* ui;
+	QMenu*  m_pLogMenu;
+	QTime   m_oTimeStamp;
 
 private slots:
 	void on_actionCopy_triggered();
- void on_textEditSystemLog_customContextMenuRequested(QPoint pos);
+	void on_textEditSystemLog_customContextMenuRequested( QPoint pos );
 	void on_actionClearBuffer_triggered();
 
-	void appendLog(QString message, LogSeverity::Severity severity = LogSeverity::Information);
+	void appendLog( QString message, LogSeverity severity = LogSeverity::Information );
+	void writeLine( const QString& sLine, LogSeverity severity );
+	void appendText( const QString& sFontArgs, const QColor& color,
+					 const QString& sLine, bool bAddTimeStamp );
+
 	void setSkin();
 };
 

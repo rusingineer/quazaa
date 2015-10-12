@@ -30,9 +30,9 @@
 #include "zlib.h"
 
 
-class CBuffer;
+class Buffer;
 
-class CCompressedConnection : public CNetworkConnection
+class CompressedConnection : public NetworkConnection
 {
 	Q_OBJECT
 
@@ -41,8 +41,8 @@ public:
 	z_stream    m_sOutput;              // zlib compressed output stream
 	bool        m_bCompressedInput;     // Compress input streams?
 	bool        m_bCompressedOutput;    // Compress output streams?
-	CBuffer* 	m_pZInput;              // Local input buffer
-	CBuffer* 	m_pZOutput;             // Local output buffer
+	Buffer* 	m_pZInput;              // Local input buffer
+	Buffer* 	m_pZOutput;             // Local output buffer
 	quint64     m_nTotalInput;          // Total input in bytes
 	quint64		m_nTotalInputDec;       // Total decompressed input in bytes.
 	quint64     m_nTotalOutput;         // Total output in bytes
@@ -51,14 +51,14 @@ public:
 	bool        m_bOutputPending;       // Do we have data to send on the compressed output stream?
 	QElapsedTimer m_tDeflateFlush;      // Amount of time until a deflate buffer flush is triggered.
 public:
-	CCompressedConnection(QObject* parent = 0);
-	virtual ~CCompressedConnection();
+	CompressedConnection( QObject* parent = 0 );
+	virtual ~CompressedConnection();
 
-	bool enableInputCompression(bool bEnable = true);
-	bool enableOutputCompression(bool bEnable = true);
+	bool enableInputCompression( bool bEnable = true );
+	bool enableOutputCompression( bool bEnable = true );
 
-	virtual qint64 readFromNetwork(qint64 nBytes);
-	virtual qint64 writeToNetwork(qint64 nBytes);
+	virtual qint64 readFromNetwork( qint64 nBytes );
+	virtual qint64 writeToNetwork( qint64 nBytes );
 
 protected:
 	bool setupInputStream();
@@ -70,51 +70,51 @@ protected:
 	void deflateOutput();
 
 public:
-	inline CBuffer* getInputBuffer()
+	inline Buffer* getInputBuffer()
 	{
-		return (m_bCompressedInput ? m_pZInput : m_pInput);
+		return ( m_bCompressedInput ? m_pZInput : m_pInput );
 	}
-	inline CBuffer* getOutputBuffer()
+	inline Buffer* getOutputBuffer()
 	{
-		return (m_bCompressedOutput ? m_pZOutput : m_pOutput);
+		return ( m_bCompressedOutput ? m_pZOutput : m_pOutput );
 	}
 	inline virtual bool hasData()
 	{
-		if(m_bOutputPending)
+		if ( m_bOutputPending )
 		{
 			return true;
 		}
 
-		if(m_pZInput && !m_pZInput->isEmpty())
+		if ( m_pZInput && !m_pZInput->isEmpty() )
 		{
 			return true;
 		}
-		if(m_pZOutput && !m_pZOutput->isEmpty())
+		if ( m_pZOutput && !m_pZOutput->isEmpty() )
 		{
 			return true;
 		}
 
-		return CNetworkConnection::hasData();
+		return NetworkConnection::hasData();
 	}
 
 	float getTotalInDecompressed()
 	{
-		if(m_nTotalInput == 0)
+		if ( m_nTotalInput == 0 )
 		{
 			return 0;
 		}
 
-		float ret = 1.0f - (float)m_nTotalInputDec / (float)m_nTotalInput;
+		float ret = 1.0f - ( float )m_nTotalInputDec / ( float )m_nTotalInput;
 		return ret;
 	}
 	float getTotalOutCompressed()
 	{
-		if(m_nTotalOutputCom == 0)
+		if ( m_nTotalOutputCom == 0 )
 		{
 			return 0;
 		}
 
-		float ret = 1.0f - (float)m_nTotalOutput / (float)m_nTotalOutputCom;
+		float ret = 1.0f - ( float )m_nTotalOutput / ( float )m_nTotalOutputCom;
 		return ret;
 	}
 

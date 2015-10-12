@@ -13,12 +13,12 @@
 ** but WITHOUT ANY WARRANTY; without even the implied warranty of
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 **
-** Please review the following information to ensure the GNU General Public 
-** License version 3.0 requirements will be met: 
+** Please review the following information to ensure the GNU General Public
+** License version 3.0 requirements will be met:
 ** http://www.gnu.org/copyleft/gpl.html.
 **
-** You should have received a copy of the GNU General Public License version 
-** 3.0 along with Quazaa; if not, write to the Free Software Foundation, 
+** You should have received a copy of the GNU General Public License version
+** 3.0 along with Quazaa; if not, write to the Free Software Foundation,
 ** Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
@@ -31,12 +31,12 @@
 
 #include "debug_new.h"
 
-CWidgetHitMonitor::CWidgetHitMonitor(QWidget* parent) :
-	QMainWindow(parent),
-	ui(new Ui::CWidgetHitMonitor)
+CWidgetHitMonitor::CWidgetHitMonitor( QWidget* parent ) :
+	QMainWindow( parent ),
+	ui( new Ui::CWidgetHitMonitor )
 {
-	ui->setupUi(this);
-	restoreState(quazaaSettings.WinMain.HitMonitorToolbar);
+	ui->setupUi( this );
+	restoreState( quazaaSettings.WinMain.HitMonitorToolbar );
 	setSkin();
 }
 
@@ -45,16 +45,16 @@ CWidgetHitMonitor::~CWidgetHitMonitor()
 	delete ui;
 }
 
-void CWidgetHitMonitor::changeEvent(QEvent* e)
+void CWidgetHitMonitor::changeEvent( QEvent* e )
 {
-	QMainWindow::changeEvent(e);
-	switch(e->type())
+	QMainWindow::changeEvent( e );
+	switch ( e->type() )
 	{
-		case QEvent::LanguageChange:
-			ui->retranslateUi(this);
-			break;
-		default:
-			break;
+	case QEvent::LanguageChange:
+		ui->retranslateUi( this );
+		break;
+	default:
+		break;
 	}
 }
 
@@ -65,8 +65,10 @@ void CWidgetHitMonitor::saveWidget()
 
 void CWidgetHitMonitor::on_actionMore_triggered()
 {
-	CDialogFilterSearch* dlgFilterSearch = new CDialogFilterSearch(this);
-	dlgFilterSearch->show();
+	// TODO: fix later
+
+	/*DialogFilterSearch* dlgFilterSearch = new DialogFilterSearch(this);
+	dlgFilterSearch->show();*/
 }
 
 void CWidgetHitMonitor::setSkin()

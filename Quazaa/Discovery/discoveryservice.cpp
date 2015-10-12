@@ -36,10 +36,11 @@ using namespace Discovery;
  * @param oNType
  * @param nRating
  */
-CDiscoveryService::CDiscoveryService(const QUrl& oURL, const CNetworkType& oNType, quint8 nRating) :
-	m_nServiceType( stNull ),
+DiscoveryService::DiscoveryService( const QUrl& oURL, const NetworkType& oNType, quint8 nRating ) :
+	m_nServiceType( ServiceType::Null ),
 	m_oNetworkType( oNType ),
 	m_oServiceURL( oURL ),
+	m_oRedirectUrl( oURL ),
 	m_bQuery( true ),
 	m_bBanned( false ),
 	m_nRating( nRating ),
@@ -53,6 +54,7 @@ CDiscoveryService::CDiscoveryService(const QUrl& oURL, const CNetworkType& oNTyp
 	m_tLastSuccess( 0 ),
 	m_nFailures( 0 ),
 	m_nZeroRevivals( 0 ),
+	m_nRedirectCount( 0 ),
 	m_bRunning( false )
 {
 }
@@ -61,8 +63,9 @@ CDiscoveryService::CDiscoveryService(const QUrl& oURL, const CNetworkType& oNTyp
  * @brief CDiscoveryService: Copy constructor. Copies all but the list of registered pointers.
  * @param pService
  */
-CDiscoveryService::CDiscoveryService(const CDiscoveryService& pService) :
+DiscoveryService::DiscoveryService( const DiscoveryService& pService ) :
 	QObject(),
+	m_nRedirectCount( 0 ),
 	m_bRunning( false )
 {
 	// The usage of a custom copy constructor makes sure the list of registered
@@ -71,6 +74,7 @@ CDiscoveryService::CDiscoveryService(const CDiscoveryService& pService) :
 	m_nServiceType  = pService.m_nServiceType;
 	m_oNetworkType  = pService.m_oNetworkType;
 	m_oServiceURL   = pService.m_oServiceURL;
+	m_oRedirectUrl  = pService.m_oRedirectUrl;
 	m_sPong         = pService.m_sPong;
 	m_nRating       = pService.m_nRating;
 	m_bBanned       = pService.m_bBanned;
@@ -90,9 +94,8 @@ CDiscoveryService::CDiscoveryService(const CDiscoveryService& pService) :
 /**
  * @brief ~CDiscoveryService
  */
-CDiscoveryService::~CDiscoveryService()
+DiscoveryService::~DiscoveryService()
 {
-
 }
 
 /**
@@ -102,7 +105,7 @@ CDiscoveryService::~CDiscoveryService()
  * @param pService
  * @return
  */
-bool CDiscoveryService::operator==(const CDiscoveryService& pService) const
+bool DiscoveryService::operator==( const DiscoveryService& pService ) const
 {
 	return ( m_nServiceType == pService.m_nServiceType &&
 			 m_oNetworkType == pService.m_oNetworkType &&
@@ -116,7 +119,7 @@ bool CDiscoveryService::operator==(const CDiscoveryService& pService) const
  * @param pService
  * @return
  */
-bool CDiscoveryService::operator!=(const CDiscoveryService& pService) const
+bool DiscoveryService::operator!=( const DiscoveryService& pService ) const
 {
 	return !( *this == pService );
 }
@@ -129,16 +132,15 @@ bool CDiscoveryService::operator!=(const CDiscoveryService& pService) const
  * @param fsStream
  * @param nVersion
  */
-void CDiscoveryService::load(CDiscoveryService*& pService, QDataStream &fsFile, int)
+void DiscoveryService::load( DiscoveryService*& pService, QDataStream& fsFile, int )
 {
 	quint8     nServiceType;        // GWC, UKHL, ...
 	quint16    nNetworkType;        // could be several in case of GWC for instance
-	QString    sURL;
+	QString    sURL, sRedirectURL;
 	QString    sPong;               // answer to ping
 	quint8     nRating;             // 0: bad; 10: very good
 	bool       bBanned;             // service URL is blocked
 	bool       bZero;
-	TServiceID nID;                 // ID used by the manager to identify the service
 	quint16    nLastHosts;          // hosts returned by the service on last query
 	quint32    nTotalHosts;         // all hosts we ever got from the service
 	quint16    nAltServices;        // number of URLs we got on query
@@ -150,11 +152,11 @@ void CDiscoveryService::load(CDiscoveryService*& pService, QDataStream &fsFile, 
 	fsFile >> nServiceType;
 	fsFile >> nNetworkType;
 	fsFile >> sURL;
+	fsFile >> sRedirectURL;
 	fsFile >> sPong;
 	fsFile >> nRating;
 	fsFile >> bBanned;
 	fsFile >> bZero;
-	fsFile >> nID;
 	fsFile >> nLastHosts;
 	fsFile >> nTotalHosts;
 	fsFile >> nAltServices;
@@ -163,15 +165,14 @@ void CDiscoveryService::load(CDiscoveryService*& pService, QDataStream &fsFile, 
 	fsFile >> nFailures;
 	fsFile >> nZeroRatingFailures;
 
-	pService = createService( sURL, (TServiceType)nServiceType,
-							  CNetworkType( nNetworkType ), nRating );
+	pService = createService( sURL, ( ServiceType::Type )nServiceType,
+							  NetworkType( nNetworkType ), nRating );
 
 	if ( pService )
 	{
 		pService->m_sPong         = sPong;
 		pService->m_bBanned       = bBanned;
 		pService->m_bZero         = bZero;
-		pService->m_nID           = nID;
 		pService->m_nLastHosts    = nLastHosts;
 		pService->m_nTotalHosts   = nTotalHosts;
 		pService->m_nAltServices  = nAltServices;
@@ -179,6 +180,8 @@ void CDiscoveryService::load(CDiscoveryService*& pService, QDataStream &fsFile, 
 		pService->m_tLastSuccess  = tLastSuccess;
 		pService->m_nFailures     = nFailures;
 		pService->m_nZeroRevivals = nZeroRatingFailures;
+
+		pService->m_oRedirectUrl = QUrl( sRedirectURL );
 
 #if ENABLE_DISCOVERY_DEBUGGING
 		QString s = QString( "Rating: " )         + QString::number( pService->m_nRating ) +
@@ -194,16 +197,16 @@ void CDiscoveryService::load(CDiscoveryService*& pService, QDataStream &fsFile, 
  * @param pService
  * @param fsFile
  */
-void CDiscoveryService::save(const CDiscoveryService* const pService, QDataStream &fsFile)
+void DiscoveryService::save( const DiscoveryService* const pService, QDataStream& fsFile )
 {
-	fsFile << (quint8)(pService->m_nServiceType);
-	fsFile << (quint16)(pService->m_oNetworkType.toQuint16());
+	fsFile << ( quint8 )( pService->m_nServiceType );
+	fsFile << ( quint16 )( pService->m_oNetworkType.toQuint16() );
 	fsFile << pService->m_oServiceURL.toString();
+	fsFile << pService->m_oRedirectUrl.toString();
 	fsFile << pService->m_sPong;
-	fsFile << (quint8)(pService->m_nRating);
+	fsFile << ( quint8 )( pService->m_nRating );
 	fsFile << pService->m_bBanned;
 	fsFile << pService->m_bZero;
-	fsFile << pService->m_nID;
 	fsFile << pService->m_nLastHosts;
 	fsFile << pService->m_nTotalHosts;
 	fsFile << pService->m_nAltServices;
@@ -214,7 +217,8 @@ void CDiscoveryService::save(const CDiscoveryService* const pService, QDataStrea
 }
 
 /**
- * @brief createService allows to create valid services.
+ * @brief createService allows to create valid services. Note that new services are marked as
+ * having been zero so they will be downgraded fast if found non functional.
  * Locking: / (static member)
  * @param sURL
  * @param eSType
@@ -222,34 +226,34 @@ void CDiscoveryService::save(const CDiscoveryService* const pService, QDataStrea
  * @param nRating
  * @return
  */
-CDiscoveryService* CDiscoveryService::createService(const QString& sURL, TServiceType eSType,
-													const CNetworkType& oNType,	quint8 nRating )
+DiscoveryService* DiscoveryService::createService( const QString& sURL, ServiceType::Type eSType,
+												   const NetworkType& oNType,	quint8 nRating )
 {
-	CDiscoveryService* pService = NULL;
+	DiscoveryService* pService = NULL;
 
 	switch ( eSType )
 	{
-	case stNull:
+	case ServiceType::Null:
 #if ENABLE_DISCOVERY_DEBUGGING
 		qDebug() << "[Discovery] Service Type: Null";
 #endif
 		break;
 
-	case stBanned:
+	case ServiceType::Banned:
 	{
 #if ENABLE_DISCOVERY_DEBUGGING
 		qDebug() << "[Discovery] Service Type: Banned";
 #endif
-		pService = new CBannedDiscoveryService( sURL, oNType, nRating );
+		pService = new BannedDiscoveryService( sURL, oNType, nRating );
 		break;
 	}
 
-	case stGWC:
+	case ServiceType::GWC:
 	{
 #if ENABLE_DISCOVERY_DEBUGGING
 		qDebug() << "[Discovery] Service Type: GWC";
 #endif
-		pService = new CGWC( sURL, oNType, nRating );
+		pService = new GWC( sURL, oNType, nRating );
 		break;
 	}
 
@@ -257,8 +261,8 @@ CDiscoveryService* CDiscoveryService::createService(const QString& sURL, TServic
 #if ENABLE_DISCOVERY_DEBUGGING
 		qDebug() << "[Discovery] Service Type: Unknown";
 #endif
-		systemLog.postLog( LogSeverity::Error, discoveryManager.m_sMessage
-						   + tr( "Internal error: Creation of service with unknown type requested: Type " )
+		systemLog.postLog( LogSeverity::Error, Component::Discovery,
+				tr( "Internal error: Creation of service with unknown type requested: Type " )
 						   + QString( eSType ) );
 
 		Q_ASSERT( false ); // unsupported service type
@@ -273,7 +277,7 @@ CDiscoveryService* CDiscoveryService::createService(const QString& sURL, TServic
  * Locking: RW
  * @param oOwnIP
  */
-void CDiscoveryService::update()
+void DiscoveryService::update()
 {
 	m_oRWLock.lockForWrite();
 
@@ -286,7 +290,7 @@ void CDiscoveryService::update()
 
 	m_oRWLock.unlock();
 
-	m_oSQCancelRequestID = signalQueue.push( this, SLOT( cancelRequest() ), common::getTNowUTC() +
+	m_oSQCancelRequestID = signalQueue.push( this, "cancelRequest",
 											 quazaaSettings.Discovery.ServiceTimeout );
 
 	emit updated( m_nID ); // notify GUI
@@ -297,7 +301,7 @@ void CDiscoveryService::update()
  * alternative service URLs.
  * Locking: RW
  */
-void CDiscoveryService::query()
+void DiscoveryService::query()
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug, "Querying service.", true );
@@ -322,7 +326,7 @@ void CDiscoveryService::query()
 	postLog( LogSeverity::Debug, "Released service lock.", true );
 #endif
 
-	m_oSQCancelRequestID = signalQueue.push( this, SLOT( cancelRequest() ), common::getTNowUTC() +
+	m_oSQCancelRequestID = signalQueue.push( this, "cancelRequest",
 											 quazaaSettings.Discovery.ServiceTimeout );
 
 	emit updated( m_nID ); // notify GUI
@@ -336,22 +340,24 @@ void CDiscoveryService::query()
  * @brief cancelRequest stops any update or query operation currently in progress.
  * Locking: RW
  */
-void CDiscoveryService::cancelRequest()
+void DiscoveryService::cancelRequest()
 {
 	cancelRequest( false );
 }
-void CDiscoveryService::cancelRequest(bool bKeepLocked)
+void DiscoveryService::cancelRequest( bool bKeepLocked )
 {
 	m_oRWLock.lockForWrite();
 
 	if ( m_bRunning )
 	{
 		doCancelRequest();
-		updateStatistics(); // also removes cancel request from signal queue if still in there
+		updateStatistics( true ); // also removes cancel request from signal queue if still in there
 	}
 
 	if ( !bKeepLocked )
+	{
 		m_oRWLock.unlock();
+	}
 }
 
 /**
@@ -359,7 +365,7 @@ void CDiscoveryService::cancelRequest(bool bKeepLocked)
  * context.
  * Sets locking: R
  */
-void CDiscoveryService::lockForRead() const
+void DiscoveryService::lockForRead() const
 {
 	m_oRWLock.lockForRead();
 }
@@ -368,7 +374,7 @@ void CDiscoveryService::lockForRead() const
  * @brief unlock allows a reader to unlock this service after having finished the respective
  * read operations.
  */
-void CDiscoveryService::unlock() const
+void DiscoveryService::unlock() const
 {
 	m_oRWLock.unlock();
 }
@@ -378,26 +384,41 @@ void CDiscoveryService::unlock() const
  * Requires locking: RW
  * @param nHosts
  */
-void CDiscoveryService::updateStatistics(quint16 nHosts, quint16 nURLs, bool bUpdateOK)
+void DiscoveryService::updateStatistics( bool bCanceled, quint16 nHosts, quint16 nURLs,
+										 bool bUpdateOK )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug,
 			 QString( "Updating Statistics: Query %1, Hosts %2, URLs %3, UpdateOK %4"
-					  ).arg( QString::number( m_bQuery ), QString::number( nHosts ),
-							 QString::number( nURLs ),    QString::number( bUpdateOK ) ), true );
+					).arg( QString::number( m_bQuery ), QString::number( nHosts ),
+						   QString::number( nURLs ),    QString::number( bUpdateOK ) ), true );
 #endif
 
-	// remove cancel request from signal queue
 	postLog( LogSeverity::Debug, tr( "Updating statistics." ), true );
-	Q_ASSERT( signalQueue.pop( m_oSQCancelRequestID ) );
 
+	if ( bCanceled )
+	{
+		Q_ASSERT( !m_oSQCancelRequestID.isNull() );
+
+		// This might be a manual canceling, so we still have to remove the ID from the queue
+		signalQueue.pop( m_oSQCancelRequestID );
+	}
+	else
+	{
+		// remove cancel request from signal queue
+		Q_ASSERT( signalQueue.pop( m_oSQCancelRequestID ) );
+	}
 	m_oSQCancelRequestID = QUuid();
 
 	if ( m_bQuery || nHosts )//in case of an update, we still count hosts we got but did not request
+	{
 		m_nLastHosts = nHosts;
+	}
 
 	if ( m_bQuery || nURLs ) //same as above
+	{
 		m_nAltServices = nURLs;
+	}
 
 	m_nTotalHosts += nHosts;
 
@@ -413,17 +434,18 @@ void CDiscoveryService::updateStatistics(quint16 nHosts, quint16 nURLs, bool bUp
 		m_bZero = false;
 		m_nZeroRevivals = 0;
 	}
-	else // fail
+	else if ( discoveryManager.isOperating() ) // fail and not currently shutting down
 	{
 		// Check network connected status and skip this if network is not connected
-		QSharedPointer<QNetworkAccessManager> pNAM = discoveryManager.requestNAM();
+		QNAMPtr pNAM = discoveryManager.requestNAM();
 
 		if ( pNAM->networkAccessible() == QNetworkAccessManager::Accessible )
 		{
 			++m_nFailures;
 
 			if ( m_bZero ) // We're dealing with a newly revived service
-			{              // that has been known to fail in the past.
+			{
+				// that has been known to fail in the past.
 				// revival failed
 				setRating( 0 );
 
@@ -444,27 +466,18 @@ void CDiscoveryService::updateStatistics(quint16 nHosts, quint16 nURLs, bool bUp
 				else
 				{
 					// decrease rating by 1
-					setRating( (m_nRating > 0) ? m_nRating - 1 : 0 );
+					setRating( ( m_nRating > 0 ) ? m_nRating - 1 : 0 );
 				}
 
-				if ( !m_nRating )
+				if ( !m_nRating && !quazaaSettings.Discovery.ZeroRatingRevivalTries )
 				{
-					m_bZero = true;
-
-					// if no retrial at a later time is wanted, ban the service for good
-					if ( !quazaaSettings.Discovery.ZeroRatingRevivalTries )
-					{
-						m_bBanned = true;
-					}
+					m_bBanned = true;
 				}
 			}
 		}
 	}
 
-	if ( discoveryManager.m_pActive[m_nServiceType] )
-		--discoveryManager.m_pActive[m_nServiceType];
-	else
-		Q_ASSERT( false );
+	Q_ASSERT( discoveryManager.m_pActive[m_nServiceType].fetchAndAddRelaxed( -1 ) > 0 );
 
 	emit updated( m_nID );
 }
@@ -474,10 +487,10 @@ void CDiscoveryService::updateStatistics(quint16 nHosts, quint16 nURLs, bool bUp
  * Requires locking: RW
  * @param nRating
  */
-void CDiscoveryService::setRating(quint8 nRating)
+void DiscoveryService::setRating( quint8 nRating )
 {
 	m_nRating    = ( nRating > quazaaSettings.Discovery.MaximumServiceRating ) ?
-					   quazaaSettings.Discovery.MaximumServiceRating : nRating;
+				   quazaaSettings.Discovery.MaximumServiceRating : nRating;
 	m_nProbaMult = ( nRating > DISCOVERY_MAX_PROBABILITY ) ? DISCOVERY_MAX_PROBABILITY : nRating;
 }
 
@@ -489,7 +502,95 @@ void CDiscoveryService::setRating(quint8 nRating)
  * @param bDebug Defaults to false. If set to true, the message is send  to qDebug() instead of
  * to the system log.
  */
-void CDiscoveryService::postLog(LogSeverity::Severity severity, QString message, bool bDebug)
+void DiscoveryService::postLog( LogSeverity severity, QString message, bool bDebug )
 {
-	CDiscovery::postLog( severity, message, bDebug, m_nID );
+	Manager::postLog( severity, message, bDebug, m_nID );
 }
+
+/**
+ * @brief handleRedirect detects redirects on network requests and follows them.
+ * @param pReply : the server reply
+ * @param pRequest : the old request - will be changed if redirection is detected
+ * @return true on redirect; false otherwise
+ */
+bool DiscoveryService::handleRedirect( QNAMPtr pNAMgr, QNetworkReply* pReply,
+									   QNetworkRequest*& pRequest )
+{
+	bool bURLUpdate = false;
+	bool bRedirect  = false;
+
+	switch ( pReply->attribute( QNetworkRequest::HttpStatusCodeAttribute ).toInt() )
+	{
+	case 301: // hard page redirect, e.g. we need to update our URL
+		bURLUpdate = true;
+	case 302: // soft redirects
+	case 307:
+		bRedirect = true;
+	default:
+		break;
+	}
+
+	if ( bRedirect )
+	{
+		// count number of redirection steps for redirection loop detection
+		++m_nRedirectCount;
+
+		QUrl oRedirect, oOriginal = pRequest->url();
+
+		// max 5 redirects in a row else we query an empty URL which results in an error lateron
+		if ( m_nRedirectCount < 5 )
+		{
+			oRedirect = pReply->attribute( QNetworkRequest::RedirectionTargetAttribute ).toUrl();
+
+			if ( oRedirect.query().isEmpty() )
+			{
+				// recycle the original query string
+				oRedirect.setQuery( oOriginal.query() );
+			}
+		}
+		else
+		{
+			qDebug() << "[DiscoveryService] REDIRECT LOOP DETECTED!";
+		}
+
+		pReply->deleteLater();
+		delete pRequest;
+
+		// generate request with redirected URL
+		pRequest = new QNetworkRequest( oRedirect );
+		pRequest->setRawHeader( "User-Agent", QuazaaGlobals::USER_AGENT_STRING().toLocal8Bit() );
+
+		// remove query strings
+		oOriginal.setQuery( "" );
+		oRedirect.setQuery( "" );
+
+		// service has been moved permanently and we have to remember its new location
+		if ( bURLUpdate )
+		{
+			postLog( LogSeverity::Information,
+					 tr( "Discovery Service %1 has been permanently moved to %2."
+					   ).arg( oOriginal.toString(), oRedirect.toString() ) );
+
+			m_oServiceURL = oRedirect;
+			m_oRedirectUrl = oRedirect;
+
+			discoveryManager.initiateSearchForDuplicates( m_nID );
+
+			// no need do update GUI here as that is done anyway when handling the reply
+		}
+		else if ( m_oRedirectUrl != oRedirect )
+		{
+			m_oRedirectUrl = oRedirect;
+			discoveryManager.initiateSearchForDuplicates( m_nID );
+		}
+
+		// send new request to redirectod url
+		pNAMgr->get( *pRequest );
+
+		return true;
+	}
+
+	m_nRedirectCount = 0;
+	return false;
+}
+

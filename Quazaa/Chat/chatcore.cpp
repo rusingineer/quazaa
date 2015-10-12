@@ -30,66 +30,72 @@
 #include "debug_new.h"
 #endif
 
-CChatCore ChatCore;
-CThread ChatThread;
+ChatCore chatCore;
+CThread chatThread;
 
-CChatCore::CChatCore(QObject *parent) :
-	QObject(parent), m_bActive(false)
+ChatCore::ChatCore( QObject* parent ) :
+	QObject( parent ),
+	m_bActive( false )
 {
 }
-CChatCore::~CChatCore()
+ChatCore::~ChatCore()
 {
-	if( m_bActive )
-		Stop();
-}
-
-void CChatCore::Add(CChatSession *pSession)
-{
-	QMutexLocker l(&m_pSection);
-
-	if( !m_lSessions.contains(pSession) )
-		m_lSessions.append(pSession);
-
-	Start();
-
-	m_pController->addSocket(pSession);
-}
-void CChatCore::Remove(CChatSession *pSession)
-{
-	QMutexLocker l(&m_pSection);
-
-	if( int nSession = m_lSessions.indexOf(pSession) != -1 )
+	if ( m_bActive )
 	{
-		m_lSessions.removeAt(nSession);
-		m_pController->removeSocket(pSession);
+		stop();
 	}
 }
 
-void CChatCore::Start()
+void ChatCore::add( ChatSession* pSession )
 {
-	if( m_bActive )
-		return;
+	QMutexLocker l( &m_pSection );
 
-	ChatThread.start("ChatCore", &m_pSection);
+	if ( !m_lSessions.contains( pSession ) )
+	{
+		m_lSessions.append( pSession );
+	}
+
+	start();
+
+	m_pController->addSocket( pSession );
+}
+void ChatCore::remove( ChatSession* pSession )
+{
+	QMutexLocker l( &m_pSection );
+
+	if ( int nSession = m_lSessions.indexOf( pSession ) != -1 )
+	{
+		m_lSessions.removeAt( nSession );
+		m_pController->removeSocket( pSession );
+	}
+}
+
+void ChatCore::start()
+{
+	if ( m_bActive )
+	{
+		return;
+	}
+
+	chatThread.start( "ChatCore", &m_pSection );
 	m_bActive = true;
 
-	m_pController = new CRateController(&m_pSection);
-	m_pController->setDownloadLimit(8192);
-	m_pController->setUploadLimit(8192);
-	m_pController->moveToThread(&ChatThread);
+	m_pController = new RateController( &m_pSection );
+	m_pController->setDownloadLimit( 8192 );
+	m_pController->setUploadLimit( 8192 );
+	m_pController->moveToThread( &chatThread );
 }
-void CChatCore::Stop()
+void ChatCore::stop()
 {
-	ChatThread.exit(0);
+	chatThread.exit( 0, true );
 	m_bActive = false;
 
-	qDeleteAll(m_lSessions);
+	qDeleteAll( m_lSessions );
 	m_lSessions.clear();
 	delete m_pController;
 }
 
-void CChatCore::OnTimer()
+void ChatCore::onTimer()
 {
-
 }
 

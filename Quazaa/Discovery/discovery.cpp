@@ -22,7 +22,6 @@
 ** Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include <QFile>
 #include <QDateTime>
 #include <QDir>
 #include <QRegularExpression>
@@ -36,41 +35,43 @@
 #include "quazaasettings.h"
 #include "debug_new.h"
 
-Discovery::CDiscovery discoveryManager;
+Discovery::Manager discoveryManager;
 
 using namespace Discovery;
 
 /**
- * @brief CDiscovery: Constructs a new discovery services manager.
+ * @brief Discovery: Constructs a new discovery services manager.
  * @param parent
  */
-CDiscovery::CDiscovery(QObject *parent) :
+Manager::Manager( QObject* parent ) :
 	QObject( parent ),
 	m_bSaved( true ),
-	m_nLastID( 0 ),
-	m_pActive( new quint16[Discovery::stNumberOfServiceTypes] )
+	m_bRunning( 0 ),
+	m_pActive( new QAtomicInt[Discovery::ServiceType::NoOfTypes] )
 {
-	// reg. meta types
-	qRegisterMetaType<TServiceID>( "TServiceID" );
-	qRegisterMetaType<TConstServicePtr>( "TConstServicePtr" );
-
-	for ( quint8 i = 0; i < Discovery::stNumberOfServiceTypes; ++i )
+	for ( quint8 i = 0; i < ServiceType::NoOfTypes; ++i )
 	{
-		m_pActive[i] = 0;
+		m_pActive[i].store( 0 );
 	}
+
+	// reg. meta types
+	static int foo = qRegisterMetaType<ServiceID>( "ServiceID" );
+	static int bar = qRegisterMetaType<ConstServicePtr>( "ConstServicePtr" );
+
+	Q_UNUSED( foo );
+	Q_UNUSED( bar );
 }
 
 /**
  * @brief ~CDiscovery: Destructor. Make sure you have stopped the magager befor destroying it.
  */
-CDiscovery::~CDiscovery()
+Manager::~Manager()
 {
 	delete[] m_pActive;
 
 	Q_ASSERT( m_mServices.empty() );
 
-	// TODO: Watch this closely: The Discovery thread might not like it to be deleted while still
-	// running...
+	// Note: m_pIDProvider is managed by HostCache
 }
 
 /**
@@ -80,7 +81,7 @@ CDiscovery::~CDiscovery()
  * is null, the total number of all services is returned, no matter whether they are working or
  * not.
  */
-quint32	CDiscovery::count(const CNetworkType& oType)
+quint32	Manager::count( const NetworkType& oType )
 {
 	QMutexLocker l( &m_pSection );
 	return doCount( oType );
@@ -89,14 +90,65 @@ quint32	CDiscovery::count(const CNetworkType& oType)
 /**
  * @brief start initializes the Discovery Services Manager. Make sure this is called after
  * QApplication is instantiated.
- * Locking: YES (asynchronous)
+ * Locking: YES
  */
-void CDiscovery::start()
+void Manager::start()
 {
-	moveToThread( &m_oDiscoveryThread );
-	m_oDiscoveryThread.start( QThread::LowPriority );
+	// initialize meta methods for for faster asynchronous invoking
+	const QMetaObject* pMetaObject = metaObject();
+	QByteArray         sNormalizedSignature;
+	int                nMethodIndex;
 
-	QMetaObject::invokeMethod( this, "asyncStartUpHelper", Qt::QueuedConnection );
+	sNormalizedSignature              = "asyncSyncSavingHelper()";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncSyncSavingHelper         = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncRequestServiceListHelper()";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncRequestServiceListHelper = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncUpdateServiceHelper(NetworkType)";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncUpdateServiceHelper      = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncUpdateServiceHelper(ServiceID)";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncUpdateServiceHelperByID  = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncQueryServiceHelper(NetworkType)";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncQueryServiceHelper       = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncQueryServiceHelper(ServiceID)";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncQueryServiceHelperByID   = pMetaObject->method( nMethodIndex );
+
+	sNormalizedSignature              = "asyncManageDuplicatesHelper(ServiceID)";
+	nMethodIndex                      = pMetaObject->indexOfMethod( sNormalizedSignature );
+	m_pfAsyncManageDuplicatesHelper   = pMetaObject->method( nMethodIndex );
+
+#ifdef _DEBUG
+	Q_ASSERT( m_pfAsyncSyncSavingHelper.isValid() );
+	Q_ASSERT( m_pfAsyncRequestServiceListHelper.isValid() );
+	Q_ASSERT( m_pfAsyncUpdateServiceHelper.isValid() );
+	Q_ASSERT( m_pfAsyncUpdateServiceHelperByID.isValid() );
+	Q_ASSERT( m_pfAsyncQueryServiceHelper.isValid() );
+	Q_ASSERT( m_pfAsyncQueryServiceHelperByID.isValid() );
+	Q_ASSERT( m_pfAsyncManageDuplicatesHelper.isValid() );
+#endif // _DEBUG
+
+	// assure worker thread validity
+	Q_ASSERT( hostCache.m_pHostCacheDiscoveryThread );
+	Q_ASSERT( hostCache.m_pHostCacheDiscoveryThread->isRunning() );
+
+	// move to worker thread
+	m_pHostCacheDiscoveryThread = hostCache.m_pHostCacheDiscoveryThread;
+	moveToThread( m_pHostCacheDiscoveryThread );
+
+	// use the same ID provider for Host Cache and Discovery
+	m_pIDProvider = &hostCache.m_oIDProvider;
+
+	QMetaObject::invokeMethod( this, "startInternal", Qt::QueuedConnection );
 }
 
 /**
@@ -104,8 +156,10 @@ void CDiscovery::start()
  * Locking: YES (synchronous)
  * @return true if the services have been successfully written to disk.
  */
-bool CDiscovery::stop()
+bool Manager::stop()
 {
+	m_bRunning.store( 0 );
+
 	bool bSaved = save( true );
 	clear();
 
@@ -124,7 +178,7 @@ bool CDiscovery::stop()
  * @return true if saving to file is known to have been successful; false otherwise (e.g. error
  * or asynchronous execution)
  */
-bool CDiscovery::save(bool bForceSaving)
+bool Manager::save( bool bForceSaving )
 {
 	if ( bForceSaving )
 	{
@@ -142,9 +196,17 @@ bool CDiscovery::save(bool bForceSaving)
 		else
 		{
 			m_pSection.unlock();
-			QMetaObject::invokeMethod( this, "asyncSyncSavingHelper", Qt::QueuedConnection );
 
-		// We do not know whether it was successful, so pretend it was not to be on the safe side.
+#ifdef _DEBUG
+			bool bOK =
+#endif // _DEBUG
+			m_pfAsyncSyncSavingHelper.invoke( this, Qt::QueuedConnection );
+#ifdef _DEBUG
+			Q_ASSERT( bOK );
+#endif // _DEBUG
+
+			// We do not know whether it was successful,
+			// so pretend it was not to be on the safe side.
 			return false;
 		}
 	}
@@ -160,14 +222,14 @@ bool CDiscovery::save(bool bForceSaving)
  * @return the service ID used to identify the service internally; 0 if the service has not been
  * added.
  */
-TServiceID CDiscovery::add(QString sURL, const TServiceType eSType,
-						   const CNetworkType& oNType, const quint8 nRating)
+ServiceID Manager::add( QString sURL, const ServiceType::Type eSType,
+						const NetworkType& oNType, const quint8 nRating )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	QString s = QString( "add( <Service>, Service Type: " ) + QString::number( eSType )  +
-						 ", Network Type: "                 + oNType.toString()          +
-						 ", Service Rating: "               + QString::number( nRating ) +
-						 " ) Service: "                     + sURL;
+				", Network Type: "                 + oNType.toString()          +
+				", Service Rating: "               + QString::number( nRating ) +
+				" ) Service: "                     + sURL;
 	postLog( LogSeverity::Debug, s, true );
 #endif
 
@@ -176,7 +238,13 @@ TServiceID CDiscovery::add(QString sURL, const TServiceType eSType,
 
 	m_pSection.lock();
 
-	if ( eSType == stBanned )
+	if ( checkBan( sURL ) )
+	{
+		m_pSection.unlock();
+		postLog( LogSeverity::Warning, tr( "Service URL banned." ) );
+		return 0;
+	}
+	else if ( eSType == ServiceType::Banned )
 	{
 		if ( manageBan( sURL, eSType, oNType ) )
 		{
@@ -184,7 +252,7 @@ TServiceID CDiscovery::add(QString sURL, const TServiceType eSType,
 			return 0;
 		}
 	}
-	else
+	else if ( normalizeURL( sURL ) ) // true if URL changes in the process
 	{
 		if ( checkBan( sURL ) )
 		{
@@ -192,40 +260,33 @@ TServiceID CDiscovery::add(QString sURL, const TServiceType eSType,
 			postLog( LogSeverity::Warning, tr( "Service URL banned." ) );
 			return 0;
 		}
-
-		if ( normalizeURL( sURL ) )
-		{
-			if ( checkBan( sURL ) )
-			{
-				m_pSection.unlock();
-				postLog( LogSeverity::Warning, tr( "Service URL banned." ) );
-				return 0;
-			}
-		}
 	}
 
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug, QString( "Adding " ) + sURL, true );
 #endif
 
-	TServicePtr pService;
+	ServicePtr pService;
 
 	if ( !sURL.isEmpty() )
 	{
-		pService = TServicePtr( CDiscoveryService::createService( sURL, eSType, oNType, nRating ) );
+		pService = ServicePtr( DiscoveryService::createService( sURL, eSType, oNType, nRating ) );
 
 		if ( pService && add( pService ) )
 		{
 			// make sure to return the right ID
-			TServiceID nTmp = pService->m_nID;
+			const ServiceID nTmp = pService->m_nID;
 
 			m_pSection.unlock();
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, QString( "New discovery service added: " ) + sURL, true );
+			postLog( LogSeverity::Debug, QString( "New discovery service added: " ) + sURL, true );
 #endif
 
 			postLog( LogSeverity::Notice, tr( "New discovery service added: " ) + sURL );
+
+			qDebug() << "Service added; ID: "
+					 << QString::number( pService->id() ).toLocal8Bit().data();
 
 			// inform GUI about new service
 			emit serviceAdded( pService );
@@ -253,7 +314,7 @@ TServiceID CDiscovery::add(QString sURL, const TServiceType eSType,
  * @return true if the removal was successful (e.g. the service could be found), false
  * otherwise.
  */
-bool CDiscovery::remove(TServiceID nID)
+bool Manager::remove( ServiceID nID )
 {
 	if ( !nID )
 	{
@@ -275,7 +336,7 @@ bool CDiscovery::remove(TServiceID nID)
  * services. The default value is false, which represents the scenario on shutdown, where the
  * GUI will be removed shortly anyway.
  */
-void CDiscovery::clear(bool bInformGUI)
+void Manager::clear( bool bInformGUI )
 {
 	m_pSection.lock();
 	doClear( bInformGUI );
@@ -287,21 +348,44 @@ void CDiscovery::clear(bool bInformGUI)
  * Locking: YES (synchronous)
  * @return true if managed; false otherwise
  */
-bool CDiscovery::check(const TConstServicePtr pService)
+bool Manager::check( const ConstServicePtr pService )
 {
 	QMutexLocker l( &m_pSection );
 
-	TConstIterator iService = m_mServices.find( pService->m_nID );
+	ConstIterator iService = m_mServices.find( pService->m_nID );
 
 	if ( iService == m_mServices.end() )
-		return false; // Unable to find service by ID
+	{
+		return false;    // Unable to find service by ID
+	}
 
-	const TConstServicePtr pExService = (*iService).second;
+	const ConstServicePtr pExService = ( *iService ).second;
 
 	if ( *pExService == *pService )
+	{
 		return true;
+	}
 	else
+	{
 		return false;
+	}
+}
+
+/**
+ * @brief initiateSearchForDuplicates schedules a check for services identical to the service
+ * specified by the given ID.
+ * Locking: YES (asynchronous)
+ * @param nID : the service ID
+ */
+void Manager::initiateSearchForDuplicates( ServiceID nID )
+{
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncManageDuplicatesHelper.invoke( this, Qt::QueuedConnection, Q_ARG( ServiceID, nID ) );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
 /**
@@ -310,31 +394,38 @@ bool CDiscovery::check(const TConstServicePtr pService)
  * @param eSType
  * @return true if active; false otherwise
  */
-bool CDiscovery::isActive(const TServiceType eSType)
+bool Manager::isActive( const ServiceType::Type eSType )
 {
-	QMutexLocker l( &m_pSection );
-
-	//postLog( LogSeverity::Debug, QString( "Active: " ) + QString::number( m_pActive[eSType] ), true );
-	return m_pActive[eSType];
+	return m_pActive[eSType].load() > 0;
 }
 
 /**
- * @brief CDiscovery::requestNAMgr provides a shared pointer to the discovery services network
+ * @brief isOperating allows to find out whether the Manager has finished starting up and not
+ * started to shut down.
+ * @return true if the Manager is operating; false if not finished starting up/started shutting
+ * down
+ */
+bool Manager::isOperating()
+{
+	return m_bRunning.load() == 1;
+}
+
+/**
+ * @brief requestNAMgr provides a shared pointer to the discovery services network
  * access manager. Note that the caller needs to hold his copy of the shared pointer until the
  * network operation has been completed to prevent the manager from being deleted too early.
  * Locking: YES (synchronous)
  * @return
  */
-QSharedPointer<QNetworkAccessManager> CDiscovery::requestNAM()
+QNAMPtr Manager::requestNAM()
 {
 	m_pSection.lock();
 
-	QSharedPointer<QNetworkAccessManager> pReturnVal = m_pNetAccessMgr.toStrongRef();
+	QNAMPtr pReturnVal = m_pNetAccessMgr.toStrongRef();
 	if ( !pReturnVal )
 	{
 		// else create a new access manager (will be deleted if nobody is using it anymore)
-		pReturnVal = QSharedPointer<QNetworkAccessManager>( new QNetworkAccessManager(),
-															&QObject::deleteLater );
+		pReturnVal = QNAMPtr( new QNetworkAccessManager(), &QObject::deleteLater );
 		m_pNetAccessMgr = pReturnVal.toWeakRef();
 
 		// Make sure the networkAccessible state is properly initialized.
@@ -360,9 +451,15 @@ QSharedPointer<QNetworkAccessManager> CDiscovery::requestNAM()
  * services. Connect to the serviceInfo() signal to recieve them.
  * Locking: YES (asynchronous)
  */
-void CDiscovery::requestServiceList()
+void Manager::requestServiceList()
 {
-	QMetaObject::invokeMethod( this, "asyncRequestServiceListHelper", Qt::QueuedConnection );
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncRequestServiceListHelper.invoke( this, Qt::QueuedConnection );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
 /**
@@ -371,16 +468,28 @@ void CDiscovery::requestServiceList()
  * Locking: YES (asynchronous)
  * @param type
  */
-void CDiscovery::updateService(const CNetworkType& type)
+void Manager::updateService( const NetworkType& type )
 {
-	QMetaObject::invokeMethod( this, "asyncUpdateServiceHelper",
-							   Qt::QueuedConnection, Q_ARG( const CNetworkType, type ) );
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncUpdateServiceHelper.invoke( this, Qt::QueuedConnection,
+										 Q_ARG( const NetworkType, type ) );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
-void CDiscovery::updateService(TServiceID nID)
+void Manager::updateService( ServiceID nID )
 {
-	QMetaObject::invokeMethod( this, "asyncUpdateServiceHelper",
-							   Qt::QueuedConnection, Q_ARG( TServiceID, nID ) );
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncUpdateServiceHelperByID.invoke( this, Qt::QueuedConnection,
+											 Q_ARG( ServiceID, nID ) );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
 /**
@@ -388,16 +497,27 @@ void CDiscovery::updateService(TServiceID nID)
  * Locking: YES (asynchronous)
  * @param type
  */
-void CDiscovery::queryService(const CNetworkType& type)
+void Manager::queryService( const NetworkType& type )
 {
-	QMetaObject::invokeMethod( this, "asyncQueryServiceHelper",
-							   Qt::QueuedConnection, Q_ARG( const CNetworkType, type ) );
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncQueryServiceHelper.invoke( this, Qt::QueuedConnection,
+										Q_ARG( const NetworkType, type ) );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
-void CDiscovery::queryService(TServiceID nID)
+void Manager::queryService( ServiceID nID )
 {
-	QMetaObject::invokeMethod( this, "asyncQueryServiceHelper",
-							   Qt::QueuedConnection, Q_ARG( TServiceID, nID ) );
+#ifdef _DEBUG
+	bool bOK =
+#endif // _DEBUG
+	m_pfAsyncQueryServiceHelperByID.invoke( this, Qt::QueuedConnection, Q_ARG( ServiceID, nID ) );
+#ifdef _DEBUG
+	Q_ASSERT( bOK );
+#endif // _DEBUG
 }
 
 /**
@@ -406,17 +526,19 @@ void CDiscovery::queryService(TServiceID nID)
  * @param type
  * @return the URL of a service of the requested type that is known to work
  */
-QString CDiscovery::getWorkingService(TServiceType type)
+QString Manager::getWorkingService( ServiceType::Type type )
 {
 	QMutexLocker l( &m_pSection );
 
-	TDiscoveryServicesList list;
-	quint16 nTotalRating = 0;		// Used to store accumulative rating of all services
-									// taken under consideration as return value.
-	TServicePtr pService;
+	DiscoveryServicesList list;
+	quint16 nTotalRating = 0;		// Used to store accumulative probability rating of all services
+	// taken under consideration as return value.
+	ServicePtr pService;
 
-	foreach ( TMapPair pair, m_mServices )
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+		  it != m_mServices.end(); ++it )
 	{
+		const MapPair& pair = *it;
 		pService = pair.second;
 
 		// Only consider services that are currently not in use. This is faster and prevents
@@ -435,7 +557,7 @@ QString CDiscovery::getWorkingService(TServiceType type)
 			{
 				// ...add the service to the list to select from
 				list.push_back( pService );
-				nTotalRating += pService->m_nRating;
+				nTotalRating += pService->m_nProbaMult;
 			}
 			else
 			{
@@ -453,13 +575,13 @@ QString CDiscovery::getWorkingService(TServiceType type)
 	{
 		// Make sure our selection is within [1 ; nTotalRating]
 		quint16 nSelectedRating = ( qrand() % nTotalRating ) + 1;
-		TListIterator   current = list.begin();
-		TServicePtr   pSelected = *current;
+		ListIterator   current = list.begin();
+		ServicePtr   pSelected = *current;
 
 		// Iterate threw list until the selected service has been found.
-		while ( nSelectedRating > pSelected->m_nRating )
+		while ( nSelectedRating > pSelected->m_nProbaMult )
 		{
-			nSelectedRating -= pSelected->m_nRating;
+			nSelectedRating -= pSelected->m_nProbaMult;
 			pSelected->m_oRWLock.unlock();
 			pSelected = *( ++current );
 		}
@@ -474,61 +596,74 @@ QString CDiscovery::getWorkingService(TServiceType type)
 	}
 }
 
-bool CDiscovery::asyncSyncSavingHelper()
+/**
+ * @brief postLog writes a message to the system log or to the debug output.
+ * Requires locking: /
+ * @param severity
+ * @param message
+ * @param bDebug Defaults to false. If set to true, the message is send  to qDebug() instead of
+ * to the system log.
+ */
+void Manager::postLog( LogSeverity severity, QString message,
+					   bool bDebug, ServiceID nID )
+{
+	QString sMessage;
+
+	if ( nID )
+	{
+		sMessage += tr( "ID:" ) += QString::number( nID ) += " ";
+	}
+
+	switch ( severity )
+	{
+	case LogSeverity::Warning:
+		sMessage += tr ( "Warning: " );
+		break;
+
+	case LogSeverity::Error:
+		sMessage += tr ( "Error: " );
+		break;
+
+	case LogSeverity::Critical:
+		sMessage += tr ( "Critical Error: " );
+		break;
+
+	default:
+		break; // do nothing
+	}
+
+	sMessage += message;
+
+	if ( bDebug )
+	{
+		sMessage = systemLog.msgFromComponent( Component::Discovery ) + sMessage;
+		qDebug() << sMessage.toLocal8Bit().constData();
+	}
+	else
+	{
+		systemLog.postLog( severity, Component::Discovery, sMessage );
+	}
+}
+
+/**
+ * @brief writeToFile is a helper method for save()
+ * Locking: YES (synchronous)
+ * @param pManager
+ * @param oFile
+ * @return The number of services written to the specified file
+ */
+quint32 Manager::writeToFile( const void* const pManager, QFile& oFile )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "asyncSyncSavingHelper()", true );
+	postLog( LogSeverity::Debug, QString( "Manager::writeToFile()" ) ), true );
 #endif
 
-	postLog( LogSeverity::Notice, tr( "Saving Discovery Services Manager state." ) );
+	Manager* pDiscovery = ( Manager* )pManager;
 
-	QString sPath          = CQuazaaGlobals::DATA_PATH() + "discovery.dat";
-	QString sBackupPath    = CQuazaaGlobals::DATA_PATH() + "discovery_backup.dat";
-	QString sTemporaryPath = sBackupPath + "_tmp";
+	pDiscovery->m_pSection.lock();
 
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "defined paths", true );
-#endif
-
-	if ( QFile::exists( sTemporaryPath ) && !QFile::remove( sTemporaryPath ) )
-	{
-		postLog( LogSeverity::Error,
-				 tr( "Could not free space required for data backup: " ) + sPath );
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "error temp path used...", true );
-#endif
-		return false;
-	}
-
-	QFile oFile( sTemporaryPath );
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "created file", true );
-#endif
-
-	if ( !oFile.open( QIODevice::WriteOnly ) )
-	{
-		postLog( LogSeverity::Error, tr( "Could open data file for write: " ) + sTemporaryPath );
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "could not write to file", true );
-#endif
-		return false;
-	}
-
-	m_pSection.lock();
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "got mutex lock", true );
-#endif
-
-	quint16 nVersion = DISCOVERY_CODE_VERSION;
-	quint32 nCount   = doCount();
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "before try", true );
-#endif
+	const quint16 nVersion = DISCOVERY_CODE_VERSION;
+	const quint32 nCount   = pDiscovery->doCount();
 
 	try
 	{
@@ -537,129 +672,93 @@ bool CDiscovery::asyncSyncSavingHelper()
 		fsFile << nVersion;
 		fsFile << nCount;
 
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "before writing services to file", true );
-#endif
-
-		TServicePtr pService;
+		ServicePtr pService;
 
 		// write services to stream
-		foreach (  TMapPair pair, m_mServices )
+		for ( DiscoveryServicesMap::const_iterator it = pDiscovery->m_mServices.begin();
+			  it != pDiscovery->m_mServices.end(); ++it )
 		{
+			const MapPair& pair = *it;
 			pService = pair.second;
 			pService->cancelRequest( true );
-			CDiscoveryService::save( pService.data(), fsFile );
+			DiscoveryService::save( pService.data(), fsFile );
 			pService->unlock();
 		}
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "saved all services", true );
-#endif
 	}
 	catch ( ... )
 	{
-		m_pSection.unlock();
+		pDiscovery->m_pSection.unlock();
 
 		postLog( LogSeverity::Error,
 				 tr( "Unspecified problem while writing discovery services to disk." ) );
 
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Caught exception!", true );
-#endif
-		return false;
+		return 0;
 	}
 
-	m_bSaved = true;
-	m_pSection.unlock();
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "mutex unlocked", true );
-#endif
-
-	oFile.close();
-
-	if ( QFile::exists( sPath ) && !QFile::remove( sPath ) )
-	{
-		postLog( LogSeverity::Error, tr( "Could not remove old data file: " ) + sPath );
-		return false;
-	}
-
-	if ( !QFile::rename( sTemporaryPath, sPath ) )
-	{
-		postLog( LogSeverity::Error, tr( "Could not rename data file: " ) + sPath );
-		return false;
-	}
-
-	if ( QFile::exists( sBackupPath ) && !QFile::remove( sBackupPath ) )
-	{
-		postLog( LogSeverity::Warning, tr( "Could not remove old backup file: " ) + sBackupPath );
-	}
-
-	if ( !QFile::copy( sPath, sBackupPath ) )
-	{
-		postLog( LogSeverity::Warning, tr( "Could not create create new backup file: " )
-						   + sBackupPath );
-	}
-
-	postLog( LogSeverity::Debug, tr( "Saved %1 services to file." ).arg( nCount ) );
-
-	return true;
+	pDiscovery->m_bSaved = true;
+	pDiscovery->m_pSection.unlock();
+	return nCount;
 }
 
-void CDiscovery::asyncStartUpHelper()
+void Manager::startInternal()
 {
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Started CDiscovery::asyncStartUpHelper().", true );
-#endif
-
-	// Initialize random number generator.
+	// initialize random number generator
 	qsrand ( common::getTNowUTC() );
 
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Initialized random number generator.", true );
-#endif
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Registered Meta Types.", true );
-#endif
-
-	// We don't really need a lock here as nobody is supposed to use the manager before
-	// it is properly initialized.
-	m_sMessage = tr( "[Discovery] " );
-
-	// Includes its own locking.
+	// includes its own locking
 	load();
 
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Finished CDiscovery::asyncStartUpHelper().", true );
-#endif
+	m_bRunning.store( 1 );
 }
 
-void CDiscovery::asyncRequestServiceListHelper()
+bool Manager::asyncSyncSavingHelper()
+{
+#if ENABLE_DISCOVERY_DEBUGGING
+	postLog( LogSeverity::Debug, "asyncSyncSavingHelper()", true );
+#endif
+
+	const quint32 nCount = common::securedSaveFile( QuazaaGlobals::DATA_PATH(), "discovery.dat",
+													Component::Discovery, this,
+													&Manager::writeToFile );
+
+	postLog( LogSeverity::Debug, tr( "%1 services saved." ).arg( nCount ) );
+
+	return nCount;
+}
+
+void Manager::asyncRequestServiceListHelper()
 {
 	m_pSection.lock();
-	foreach ( TMapPair pair, m_mServices )
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+		  it != m_mServices.end(); ++it )
 	{
+		const MapPair& pair = *it;
 		emit serviceInfo( pair.second );
 	}
 	m_pSection.unlock();
 }
 
-void CDiscovery::asyncUpdateServiceHelper(const CNetworkType type)
+void Manager::asyncUpdateServiceHelper( const NetworkType type )
 {
 	QSharedPointer<QNetworkAccessManager> pNAM = requestNAM();
 
 	if ( pNAM->networkAccessible() == QNetworkAccessManager::Accessible )
 	{
 		m_pSection.lock();
-		TServicePtr pService = getRandomService( type );
+		ServicePtr pService = getRandomService( type );
 		m_pSection.unlock();
 
 		if ( pService )
 		{
+			if ( pService.data()->isRunning() )
+			{
+				qDebug() << "*** Warning: Canceled currently running Discovery request for update!";
+				pService.data()->cancelRequest();
+			}
+
 			postLog( LogSeverity::Notice, tr( "Updating service: " ) + pService->url() );
 
-			++m_pActive[pService.data()->m_nServiceType];
+			m_pActive[pService.data()->m_nServiceType].fetchAndAddRelaxed( 1 );
 			pService->update();
 		}
 		else
@@ -671,18 +770,18 @@ void CDiscovery::asyncUpdateServiceHelper(const CNetworkType type)
 	else
 	{
 		postLog( LogSeverity::Error,
-		tr( "Could not update service because the network connection is currently unavailable." ) );
+				 tr( "Could not update service because the network connection is currently unavailable." ) );
 	}
 }
 
-void CDiscovery::asyncUpdateServiceHelper(TServiceID nID)
+void Manager::asyncUpdateServiceHelper( ServiceID nID )
 {
 	// We do not prevent users from manually querying services even if the network connection is
 	// reported to be down. Maybe they know better than we do.
 
 	m_pSection.lock();
 
-	TIterator iService = m_mServices.find( nID );
+	Iterator iService = m_mServices.find( nID );
 
 	if ( iService == m_mServices.end() )
 	{
@@ -694,18 +793,24 @@ void CDiscovery::asyncUpdateServiceHelper(TServiceID nID)
 		return;
 	}
 
-	TServicePtr pService = (*iService).second;
+	ServicePtr pService = ( *iService ).second;
 	m_pSection.unlock();
 
 	Q_ASSERT( pService ); // We should always get a valid service from the iterator
 
+	if ( pService.data()->isRunning() )
+	{
+		qDebug() << "*** Warning: Canceled currently running Discovery request for update!";
+		pService.data()->cancelRequest();
+	}
+
 	postLog( LogSeverity::Notice, tr( "Updating service: " ) + pService->url() );
 
-	++m_pActive[pService.data()->m_nServiceType];
+	m_pActive[pService.data()->m_nServiceType].fetchAndAddRelaxed( 1 );
 	pService->update();
 }
 
-void CDiscovery::asyncQueryServiceHelper(const CNetworkType type)
+void Manager::asyncQueryServiceHelper( const NetworkType type )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	QString s = QString ( "CDiscovery::asyncQueryServiceHelper( " ) +
@@ -718,15 +823,15 @@ void CDiscovery::asyncQueryServiceHelper(const CNetworkType type)
 	if ( pNAM->networkAccessible() == QNetworkAccessManager::Accessible )
 	{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Network accessible.", true );
+		postLog( LogSeverity::Debug, "Network accessible.", true );
 #endif
 
 		m_pSection.lock();
-		TServicePtr pService = getRandomService( type );
+		ServicePtr pService = getRandomService( type );
 		m_pSection.unlock();
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Got service pointer.", true );
+		postLog( LogSeverity::Debug, "Got service pointer.", true );
 #endif
 
 		if ( pService )
@@ -737,17 +842,23 @@ void CDiscovery::asyncQueryServiceHelper(const CNetworkType type)
 			postLog( LogSeverity::Debug, "Service pointer OK.", true );
 #endif
 
-			++m_pActive[pService.data()->serviceType()];
+			if ( pService.data()->isRunning() )
+			{
+				qDebug() << "*** Warning: Canceled currently running Discovery request for query!";
+				pService.data()->cancelRequest();
+			}
+
+			m_pActive[pService.data()->serviceType()].fetchAndAddRelaxed( 1 );
 			pService->query();
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Service Queried.", true );
+			postLog( LogSeverity::Debug, "Service Queried.", true );
 #endif
 		}
 		else
 		{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Error, "Service pointer NULL!", true );
+			postLog( LogSeverity::Error, "Service pointer NULL!", true );
 #endif
 
 			postLog( LogSeverity::Warning,
@@ -757,13 +868,13 @@ void CDiscovery::asyncQueryServiceHelper(const CNetworkType type)
 	else
 	{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Error, "Network inaccessible!", true );
-	postLog( LogSeverity::Error,
-			 QString( "Network status: " ) + QString::number( pNAM->networkAccessible() ), true );
+		postLog( LogSeverity::Error, "Network inaccessible!", true );
+		postLog( LogSeverity::Error,
+				 QString( "Network status: " ) + QString::number( pNAM->networkAccessible() ), true );
 #endif
 
 		postLog( LogSeverity::Error,
-		tr( "Could not query service because the network connection is currently unavailable." ) );
+				 tr( "Could not query service because the network connection is currently unavailable." ) );
 	}
 
 #if ENABLE_DISCOVERY_DEBUGGING
@@ -772,7 +883,7 @@ void CDiscovery::asyncQueryServiceHelper(const CNetworkType type)
 #endif
 }
 
-void CDiscovery::asyncQueryServiceHelper(TServiceID nID)
+void Manager::asyncQueryServiceHelper( ServiceID nID )
 {
 	// We do not prevent users from manually querying services even if the network connection is
 	// reported to be down. Maybe they know better than we do.
@@ -783,7 +894,7 @@ void CDiscovery::asyncQueryServiceHelper(TServiceID nID)
 
 	m_pSection.lock();
 
-	TIterator iService = m_mServices.find( nID );
+	Iterator iService = m_mServices.find( nID );
 
 	if ( iService == m_mServices.end() )
 	{
@@ -795,14 +906,20 @@ void CDiscovery::asyncQueryServiceHelper(TServiceID nID)
 		return; // Unable to find service by ID
 	}
 
-	TServicePtr pService = (*iService).second;
+	ServicePtr pService = ( *iService ).second;
 	m_pSection.unlock();
 
 	Q_ASSERT( pService ); // We should always get a valid service from the iterator
 
+	if ( pService.data()->isRunning() )
+	{
+		qDebug() << "*** Warning: Canceled currently running Discovery request for query!";
+		pService.data()->cancelRequest();
+	}
+
 	postLog( LogSeverity::Notice, tr( "Querying service: " ) + pService->url() );
 
-	++m_pActive[pService.data()->serviceType()];
+	m_pActive[pService.data()->serviceType()].fetchAndAddRelaxed( 1 );
 	pService->query();
 
 #if ENABLE_DISCOVERY_DEBUGGING
@@ -810,22 +927,29 @@ void CDiscovery::asyncQueryServiceHelper(TServiceID nID)
 #endif
 }
 
+void Manager::asyncManageDuplicatesHelper( ServiceID nID )
+{
+	manageDuplicates( ( *m_mServices.find( nID ) ).second, true );
+}
+
 /**
  * @brief doCount: Internal helper without locking. See count for documentation.
  */
-quint32 CDiscovery::doCount(const CNetworkType& oType)
+quint32 Manager::doCount( const NetworkType& oType )
 {
 	if ( oType.isNull() )
 	{
-		return (quint32)m_mServices.size();
+		return ( quint32 )m_mServices.size();
 	}
 	else
 	{
 		quint16 nCount = 0;
-		TServicePtr pService;
+		ServicePtr pService;
 
-		foreach ( TMapPair pair, m_mServices )
+		for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+			  it != m_mServices.end(); ++it )
 		{
+			const MapPair& pair = *it;
 			pService = pair.second;
 			pService->m_oRWLock.lockForRead();
 
@@ -847,26 +971,30 @@ quint32 CDiscovery::doCount(const CNetworkType& oType)
 /**
  * @brief doClear: Internal helper without locking. See clear for documentation.
  */
-void CDiscovery::doClear(bool bInformGUI)
+void Manager::doClear( bool bInformGUI )
 {
 	if ( bInformGUI )
 	{
-		foreach ( TMapPair pair, m_mServices )
+		for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+			  it != m_mServices.end(); ++it )
 		{
+			const MapPair& pair = *it;
 			emit serviceRemoved( pair.second->m_nID ); // inform GUI
+
+			// free GUI ID
+			m_pIDProvider->release( pair.second->m_nID );
 		}
 	}
 
 	m_mServices.clear();	// TServicePtr takes care of service deletion
-	m_nLastID = 0;			// make sure to recycle the IDs.
 }
 
 /**
  * @brief doRemove: Internal helper without locking. See remove for documentation.
  */
-bool CDiscovery::doRemove(TServiceID nID)
+bool Manager::doRemove( ServiceID nID )
 {
-	TIterator iService = m_mServices.find( nID );
+	Iterator iService = m_mServices.find( nID );
 
 	if ( iService == m_mServices.end() )
 	{
@@ -878,7 +1006,7 @@ bool CDiscovery::doRemove(TServiceID nID)
 	// inform GUI about service removal
 	emit serviceRemoved( nID );
 
-	TServicePtr pService = (*iService).second;
+	ServicePtr pService = ( *iService ).second;
 
 	postLog( LogSeverity::Notice,
 			 tr( "Removing discovery service: " ) + pService->m_oServiceURL.toString() );
@@ -890,8 +1018,7 @@ bool CDiscovery::doRemove(TServiceID nID)
 	m_mServices.erase( nID );
 
 	// Make sure to reassign the now unused ID.
-	if ( --nID < m_nLastID )
-		m_nLastID = nID;
+	m_pIDProvider->release( nID );
 
 	return true;
 }
@@ -902,61 +1029,53 @@ bool CDiscovery::doRemove(TServiceID nID)
  * @return true if loading from file was successful; false otherwise.
  */
 // Called only from within startup sequence
-void CDiscovery::load()
+void Manager::load()
 {
-	QString sPath = CQuazaaGlobals::DATA_PATH() + "discovery.dat";
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Started loading services.", true );
-#endif
+	QString sPath = QuazaaGlobals::DATA_PATH() + "discovery.dat";
 
 	if ( load( sPath ) )
 	{
-		postLog( LogSeverity::Debug, tr( "Loaded discovery services from file: " ) + sPath );
+		postLog( LogSeverity::Debug, tr( "Loaded %1 discovery services from file: "
+									   ).arg( QString::number( count() ) ) + sPath );
 	}
 	else // Unable to load default file. Switch to backup one instead.
 	{
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Failed primary attempt on loading services.", true );
-#endif
-
-		sPath = CQuazaaGlobals::DATA_PATH() + "discovery_backup.dat";
+		sPath = QuazaaGlobals::DATA_PATH() + "discovery_backup.dat";
 
 		postLog( LogSeverity::Warning,
 				 tr( "Failed to load discovery services from primary file. Switching to backup: " )
 				 + sPath );
 
-		if ( !load( sPath ) )
+		if ( load( sPath ) )
 		{
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Failed secondary attempt on loading services.", true );
-#endif
-
-			postLog( LogSeverity::Error, tr( "Failed to load discovery services!" ) );
+			postLog( LogSeverity::Debug, tr( "Loaded %1 discovery services from backup file: "
+										   ).arg( QString::number( count() ) ) + sPath );
+		}
+		else
+		{
+			postLog( LogSeverity::Warning, "Failed secondary attempt on loading services!" );
 		}
 	}
-
-#if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, QString( "Number of services: %1" ).arg( count() ), true );
-#endif
 
 	if ( count() < 5 )
 	{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Adding defaults.", true );
+		postLog( LogSeverity::Debug, "Adding defaults.", true );
 #endif
 
 		addDefaults();
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug,
-			 QString( "Finished adding defaults. New number of services: %1" ).arg( count() ),
-			 true );
+		postLog( LogSeverity::Debug,
+				 QString( "Finished adding defaults. New number of services: %1" ).arg( count() ),
+				 true );
 #endif
 	}
+
+	emit loadingFinished();
 }
 
-bool CDiscovery::load( QString sPath )
+bool Manager::load( QString sPath )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug,
@@ -966,13 +1085,15 @@ bool CDiscovery::load( QString sPath )
 	QFile oFile( sPath );
 
 	if ( ! oFile.open( QIODevice::ReadOnly ) )
+	{
 		return false;
+	}
 
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug, "Prepared file.", true );
 #endif
 
-	CDiscoveryService* pService = NULL;
+	DiscoveryService* pService = NULL;
 
 	try
 	{
@@ -984,19 +1105,19 @@ bool CDiscovery::load( QString sPath )
 		quint32 nCount;
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug,
-			 QString( "Discovery code version:      " ) +
-			 QString::number( DISCOVERY_CODE_VERSION ), true );
+		postLog( LogSeverity::Debug,
+				 QString( "Discovery code version:      " ) +
+				 QString::number( DISCOVERY_CODE_VERSION ), true );
 #endif
 
 		fsFile >> nVersion;
 		fsFile >> nCount;
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug,
-			 QString( "File data structure version: " ) + QString::number( nVersion ), true );
-	postLog( LogSeverity::Debug,
-			 QString( "Number of services stored in file: " ) + QString::number( nCount ), true );
+		postLog( LogSeverity::Debug,
+				 QString( "File data structure version: " ) + QString::number( nVersion ), true );
+		postLog( LogSeverity::Debug,
+				 QString( "Number of services stored in file: " ) + QString::number( nCount ), true );
 #endif
 
 		if ( nVersion == DISCOVERY_CODE_VERSION ) // else do load defaults
@@ -1005,24 +1126,24 @@ bool CDiscovery::load( QString sPath )
 			while ( nCount > 0 )
 			{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug,
-			 QString( "Still %1 services to load." ).arg( QString::number( nCount ) ),
-			 true );
+				postLog( LogSeverity::Debug,
+						 QString( "Still %1 services to load." ).arg( QString::number( nCount ) ),
+						 true );
 #endif
 
-				CDiscoveryService::load( pService, fsFile, nVersion );
+				DiscoveryService::load( pService, fsFile, nVersion );
 
 				if ( pService )
 				{
 					// This needs two lines for compilation under MingW to succeed.
-					TServicePtr pManagedService = TServicePtr( pService );
+					ServicePtr pManagedService = ServicePtr( pService );
 					add( pManagedService );
 					pService = NULL;
 				}
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug,
-			 QString( "Service entry %1 processed." ).arg( QString::number( nCount ) ), true );
+				postLog( LogSeverity::Debug,
+						 QString( "Service entry %1 processed." ).arg( QString::number( nCount ) ), true );
 #endif
 
 				--nCount;
@@ -1032,15 +1153,17 @@ bool CDiscovery::load( QString sPath )
 	catch ( ... )
 	{
 		if ( pService )
+		{
 			delete pService;
+		}
 
 		clear();
 		oFile.close();
 
-		postLog( LogSeverity::Error, tr( "Caught an exception while loading services from file!" ));
+		postLog( LogSeverity::Error, tr( "Caught an exception while loading services from file!" ) );
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Error while loading services.", true );
+		postLog( LogSeverity::Debug, "Error while loading services.", true );
 #endif
 		return false;
 	}
@@ -1059,41 +1182,16 @@ bool CDiscovery::load( QString sPath )
  * @param pService
  * @return true if the service was added; false if not (e.g. duplicate was detected).
  */
-bool CDiscovery::add(TServicePtr& pService)
+bool Manager::add( ServicePtr& pService )
 {
 	// remove duplicates and handle bans
-	if ( manageDuplicates( pService ) )
+	if ( manageDuplicates( pService, false ) )
 	{
 		return false;
 	}
 
-	// check for already existing ID
-	if ( pService->m_nID && m_mServices.find( pService->m_nID ) != m_mServices.end() )
-	{
-		// We need to assign a new ID, as the previous ID of this service is already in use.
-
-		// This should not happen as the services from file should be loaded into the manager before
-		// any new services that might be added during the session.
-		Q_ASSERT( false );
-
-		pService->m_nID = 0; // set ID to invalid.
-	}
-
-	// assign valid ID if necessary
-	if ( !pService->m_nID )
-	{
-		TConstIterator it;
-		do
-		{
-			// Check the next ID until a free one is found.
-			it = m_mServices.find( ++m_nLastID );
-		}
-		while ( !m_nLastID // overflow is allowed and expected once all IDs have been used once
-				|| it != m_mServices.end() );
-
-		// assign ID to service
-		pService->m_nID = m_nLastID;
-	}
+	// assign ID to service
+	pService->m_nID = m_pIDProvider->aquire();
 
 	// push to map
 	m_mServices[pService->m_nID] = pService;
@@ -1112,9 +1210,9 @@ bool CDiscovery::add(TServicePtr& pService)
  * Locking: YES (synchronous)
  */
 // Note: When modifying this method, compatibility to Shareaza should be maintained.
-void CDiscovery::addDefaults()
+void Manager::addDefaults()
 {
-	QString sPath = QDir::toNativeSeparators(QString("%1/DefaultServices.dat").arg(qApp->applicationDirPath()));
+	QString sPath = QDir::toNativeSeparators( QString( "%1/DefaultServices.dat" ).arg( qApp->applicationDirPath() ) );
 	QFile oFile( sPath );
 
 	postLog( LogSeverity::Debug, tr( "Loading default services from file." ) );
@@ -1134,12 +1232,14 @@ void CDiscovery::addDefaults()
 		bool        bAdded;
 #endif
 
-		while( !fsFile.atEnd() )
+		while ( !fsFile.atEnd() )
 		{
 			sLine = fsFile.readLine();
 
 			if ( sLine.length() < 7 )	// Blank comment line
+			{
 				continue;
+			}
 
 			cType = sLine.at( 0 );
 			sService = sLine.right( sLine.length() - 2 );
@@ -1147,7 +1247,7 @@ void CDiscovery::addDefaults()
 			bAdded = false;
 #endif
 
-			switch( cType.toLatin1() )
+			switch ( cType.toLatin1() )
 			{
 //			case '1':	// gnutella service
 //				break;
@@ -1156,7 +1256,8 @@ void CDiscovery::addDefaults()
 				postLog( LogSeverity::Debug, "Parsing Default Service: G2", true );
 				bAdded =
 #endif
-				add( sService, stGWC, CNetworkType( dpG2 ), DISCOVERY_MAX_PROBABILITY );
+					add( sService, ServiceType::GWC,
+						 NetworkType( DiscoveryProtocol::G2 ), DISCOVERY_MAX_PROBABILITY );
 				break;
 
 			case 'M':	// Multi-network service
@@ -1164,7 +1265,8 @@ void CDiscovery::addDefaults()
 				postLog( LogSeverity::Debug, "Parsing Default Service: Multi Network Cache", true );
 				bAdded =
 #endif
-				add( sService, stGWC, CNetworkType( dpG2 ), DISCOVERY_MAX_PROBABILITY );
+					add( sService, ServiceType::GWC,
+						 NetworkType( DiscoveryProtocol::G2 ), DISCOVERY_MAX_PROBABILITY );
 				break;
 
 //			case 'D':	// eDonkey service
@@ -1177,24 +1279,26 @@ void CDiscovery::addDefaults()
 				postLog( LogSeverity::Debug, "Parsing Default Service: Banned Service", true );
 				bAdded =
 #endif
-				add( sService, stBanned, CNetworkType( dpNull ), 0 );
+					add( sService, ServiceType::Banned, NetworkType( DiscoveryProtocol::None ), 0 );
 				break;
 
 			default:	// Comment line or unsupported
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Parsed comment line or unsupported service type.", true );
+				postLog( LogSeverity::Debug, "Parsed comment line or unsupported service type.", true );
 #endif
 				break;
 			}
 
 #if ENABLE_DISCOVERY_DEBUGGING
 			if ( bAdded )
+			{
 				postLog( LogSeverity::Debug, "Service added.", true );
+			}
 #endif
 		}
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Finished parsing Default Services file.", true );
+		postLog( LogSeverity::Debug, "Finished parsing Default Services file.", true );
 #endif
 	}
 	catch ( ... )
@@ -1212,73 +1316,49 @@ void CDiscovery::addDefaults()
 }
 
 /**
- * @brief manageBan handles the checking for duplicates when adding a new ban.
+ * @brief manageBan handles the checking existing services with the same URL when adding a ban.
  * Requires locking: YES
- * @param sURL
- * @param eSType
- * @param oNType
- * @return true if the caller needs not to worry about adding the banned service anymore
+ * @param sURL : the URL
+ * @param eSType : the service type of the banned service
+ * @param oNType : the network type of the banned service
+ * @return true if the caller needs not to worry about adding the requested ban anymore
  */
-bool CDiscovery::manageBan(QString& sURL, const TServiceType eSType, const CNetworkType& oNType)
+bool Manager::manageBan( const QString& sURL, const ServiceType::Type eSType,
+						 const NetworkType& oNType )
 {
 	bool bReturn = false;
 
-	foreach ( TMapPair pair, m_mServices )
+	ServicePtr pService = lookupUrl( sURL );
+
+	if ( pService )
 	{
-		// already existing service
-		TServicePtr pService = pair.second;
-		pService->m_oRWLock.lockForWrite();
-
-		// check for services with the same URL; Note: all URLs should be lower case, so case
-		// sensitivity is not a problem here.
-		if ( !pService->m_oServiceURL.toString().compare( sURL ) )
+		// Note: All service with type stBanned also have m_bBanned set to true.
+		// Note also that at the time this is called we have already checked for a duplicate bans.
+		if ( eSType == pService->m_nServiceType )
 		{
-			TServiceID nID = 0;
+			pService->m_oRWLock.unlock();
+			pService->m_oRWLock.lockForWrite();
 
-			// All service with type stBanned have m_bBanned set to true.
-			if ( /*pService->m_nServiceType == stBanned ||*/ pService->m_bBanned )
-			{
-				// existing bans do override everything
+			// Make sure the existing service is set to handle the networks pService handles, too.
+			pService->m_oNetworkType.setNetwork( oNType );
+			pService->m_bBanned = true;
+			bReturn = true;
 
-				postLog( LogSeverity::Debug,
-						 tr( "URL already banned. Adding it twice would be a waste." ) );
-				bReturn = true;
-				sURL = "";
-			}
-			else // existing service not yet banned
-			{
-				if ( eSType == pService->m_nServiceType )
-				{
-					// Make sure the existing service is set to handle the networks pService
-					// handles, too.
-					pService->m_oNetworkType.setNetwork( oNType );
-					pService->m_bBanned = true;
-					bReturn = true;
-					sURL = "";
-
-					postLog( LogSeverity::Debug,
-							 tr( "Detected an already existing service using the same URL. " ) +
-							 tr( "Setting that service to banned instead of adding a new one." ) );
-				}
-				else
-				{
-					nID = pService->m_nID;
-					postLog( LogSeverity::Debug,
-							 tr( "Detected an already existing service using the same URL." ) +
-							 tr( "Removing that service before adding a new one." ) );
-				}
-			}
+			postLog( LogSeverity::Debug,
+					 tr( "Detected an already existing service using the same URL. " ) +
+					 tr( "Setting that service to banned instead of adding a new one." ) );
 
 			pService->m_oRWLock.unlock();
-
-			if ( !bReturn )
-				doRemove( nID );
-
-			break; // There can only be one service with the same URL, so we needn't search further.
 		}
 		else
 		{
 			pService->m_oRWLock.unlock();
+
+			doRemove( pService->m_nID );
+
+			postLog( LogSeverity::Debug,
+					 tr( "Detected an already existing service using the same URL." ) +
+					 tr( "Removing that service before adding a new one." ) );
 		}
 	}
 
@@ -1288,29 +1368,18 @@ bool CDiscovery::manageBan(QString& sURL, const TServiceType eSType, const CNetw
 /**
  * @brief checkBan checks a given URL against the list of banned services.
  * Requires locking: YES
- * @param sURL
- * @return true if the URL is already present and has been banned; false otherwise.
+ * @param sURL : the URL
+ * @return true if the URL is banned; false otherwise.
  */
-bool CDiscovery::checkBan(QString sURL) const
+bool Manager::checkBan( const QString& sURL ) const
 {
 	bool bReturn = false;
 
-	foreach ( TMapPair pair, m_mServices )
+	ServicePtr pService = lookupUrl( sURL );
+
+	if ( pService )
 	{
-		// already existing service
-		TServicePtr pService = pair.second;
-		pService->m_oRWLock.lockForRead();
-
-		// check for banned services with the same URL
-		// All service with type stBanned have m_bBanned set to true.
-		if ( ( pService->m_bBanned /*|| pService->m_nServiceType == stBanned*/ ) &&
-			 !pService->m_oServiceURL.toString().compare( sURL ) )
-		{
-			bReturn = true;
-
-			pService->m_oRWLock.unlock();
-			break; // There can only be one service with the same URL, so we needn't search further.
-		}
+		bReturn = pService->m_bBanned;
 
 		pService->m_oRWLock.unlock();
 	}
@@ -1319,29 +1388,168 @@ bool CDiscovery::checkBan(QString sURL) const
 }
 
 /**
- * @brief manageDuplicates checks if an identical (or very similar) service is already present
+ * @brief lookupUrl finds the service with the specified URL if such a service exists.
+ * Requires locking: YES
+ * @param sURL : the URL
+ * @return the service; note that it is locked for read
+ */
+Manager::ServicePtr Manager::lookupUrl( const QString& sURL ) const
+{
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+		  it != m_mServices.end(); ++it )
+	{
+		const MapPair& pair = *it;
+		ServicePtr pService = pair.second;
+
+		pService->m_oRWLock.lockForRead();
+
+		if ( !sURL.compare( pService->m_oServiceURL.toString() ) ||
+			 !sURL.compare( pService->m_oRedirectUrl.toString() ) )
+		{
+			return pService;
+		}
+
+		pService->m_oRWLock.unlock();
+	}
+
+	return ServicePtr();
+}
+
+
+/**
+ * @brief lookupDuplicates hands the caller a list of possible duplicates of a specified service
+ * Requires locking: YES
+ * @param pService : the service
+ * @return a list of pairs of duplicates and bool values; bool == true for dominating service
+ */
+/*std::list< std::pair<Manager::ServicePtr, bool> > Manager::lookupDuplicates(ServicePtr& pService)
+{
+	std::list< std::pair<Manager::ServicePtr, bool> > lResult;
+
+	pService->m_oRWLock.lockForRead();
+	const QString sURL      = pService->m_oServiceURL.toString();
+	const QString sRedirect = pService->m_oRedirectUrl.toString();
+
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin;
+		  it != m_mServices.end(); ++it )
+	{
+		const MapPair& pair = *it;
+		// already existing service
+		ServicePtr pExService = pair.second;
+
+		pExService->m_oRWLock.lockForRead();
+		const QString sExURL      = pExService->m_oServiceURL.toString();
+		const QString sExRedirect = pExService->m_oRedirectUrl.toString();
+
+		if ( !sURL.compare( sExURL )           || // url identical
+			 !sRedirect.compare( sExRedirect ) || // redirection destination identical
+			 !sRedirect.compare( sExURL )      || // the given service redirects to the existing one
+			 sURL.startsWith( sExURL ) )          // shorter URL dominates
+		{
+			lResult.push_back( std::make_pair( pExService, true ) );
+		}
+		else if ( !sURL.compare( sExRedirect ) || // existing service redirects to this URL
+				  sExURL.startsWith( sURL ) )     // existing URL is longer (e.g. dominated)
+		{
+			lResult.push_back( std::make_pair( pExService, false ) );
+		}
+
+		pExService->m_oRWLock.unlock();
+	}
+
+	pService->m_oRWLock.unlock();
+
+	return lResult;
+}*/
+
+/**
+ * @brief manageDuplicates checks if an identical (or very similar) service is (already) present
  * in the manager, decides which service to keep, which service to update etc. Note that this does
  * not treat bans differently from any other service, so ban management needs to be done beforehand.
  * Requires locking: YES
- * @param pService
+ * @param pService : the service to check
+ * @param bNeedRemoval : false - pService has not yet been added; true - otherwise
  * @return true if pService needs not to be added to the manager, false if it needs to be added.
  */
-// TODO: Further improve this
-// TODO: implement bans overwriting existing services
-// TODO: lookup service domain and keep it updated when accessing service to detect duplicates
-bool CDiscovery::manageDuplicates(TServicePtr& pService)
+bool Manager::manageDuplicates( ServicePtr& pService, bool bNeedRemoval )
 {
-	QString sURL = pService->m_oServiceURL.toString();
+	// there is only a valid ID for services that have already been added
+	Q_ASSERT( bNeedRemoval == (bool)pService->m_nID );
+
+	/*std::list< std::pair<Manager::ServicePtr, bool> > lDuplicates = lookupDuplicates( pService );
+
+
+	pService->m_oRWLock.lockForRead();
+	for ( std::list< std::pair<Manager::ServicePtr, bool> >::const_iterator i = lDuplicates.begin();
+		  i != lDuplicates.end(); ++i )
+	{
+		ServicePtr pDuplicate = (*i).first;
+
+		if ( (*i).second ) // pDuplicate dominates pService
+		{
+			bDelete
+		}
+		else // pService dominates pDuplicate
+		{
+			if ( bNeedRemoval )
+			{
+				postLog( LogSeverity::Debug,
+						 tr( "Removing duplicate Service:" ) + pDuplicate->m_oServiceURL.toString() );
+
+				pDuplicate->m_oRWLock.unlock();
+				doRemove( pService->m_nID );
+				pService.clear();
+				return false;
+			}
+			else
+			{
+				postLog( LogSeverity::Debug,
+						 tr( "Service already present. Not going to add duplicate." ) );
+
+				pService->m_oRWLock.unlock();
+				pService.clear();
+				return false;
+			}
+		}
+	}
+	pService->unlock();
+
+	if ( bDelete )
+	{
+		if ( bNeedRemoval )
+		{
+			postLog( LogSeverity::Debug,
+					 tr( "Removing duplicate Service:" ) + pService->m_oServiceURL.toString() );
+
+			pService->m_oRWLock.unlock();
+			doRemove( pService->m_nID );
+			pService.clear();
+			return true;
+		}
+		else
+		{
+			postLog( LogSeverity::Debug,
+					 tr( "Service already present. Not going to add duplicate." ) );
+
+			pService->m_oRWLock.unlock();
+			pService.clear();
+			return true;
+		}
+	}*/
+
+
 
 	pService->m_oRWLock.lockForWrite();
+	QString sURL = pService->m_oServiceURL.toString();
 
-	foreach ( TMapPair pair, m_mServices )
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+		  it != m_mServices.end(); ++it )
 	{
+		const MapPair& pair = *it;
 		// already existing service
-		TServicePtr pExService = pair.second;
+		ServicePtr pExService = pair.second;
 
 		QReadLocker oExServiceReadLock( &pExService->m_oRWLock );
-		QString sExURL = pExService->m_oServiceURL.toString();
 
 		if ( *pService == *pExService )
 		{
@@ -1352,6 +1560,8 @@ bool CDiscovery::manageDuplicates(TServicePtr& pService)
 			pService.clear();
 			return true;
 		}
+
+		QString sExURL = pExService->m_oServiceURL.toString();
 
 		// check for services with the same URL; Note: all URLs should be case insesitive due to
 		// normalizeURLs(), so case sensitivity is not a problem here.
@@ -1391,7 +1601,7 @@ bool CDiscovery::manageDuplicates(TServicePtr& pService)
 				else
 				{
 					postLog( LogSeverity::Debug,
-						 tr( "Detected a service of different type already using the same URL." ) );
+							 tr( "Detected a service of different type already using the same URL." ) );
 				}
 			}
 
@@ -1402,57 +1612,57 @@ bool CDiscovery::manageDuplicates(TServicePtr& pService)
 
 		// check for services with only part of the URL of an other service
 		// this filters out "www.example.com"/"www.example.com/gwc.php" pairs
-/*		if ( sExURL.startsWith( sURL ) )
-		{
-			if ( pExService->m_nServiceType == stBanned || pExService->m_bBanned )
-			{
-				// existing bans do override everything
+		/*		if ( sExURL.startsWith( sURL ) )
+				{
+					if ( pExService->m_nServiceType == stBanned || pExService->m_bBanned )
+					{
+						// existing bans do override everything
 
-				postLog( LogSeverity::Debug, tr( "URL already banned. Not going do add it." ) );
-			}
-			else if ( pService->m_nServiceType == stBanned || pService->m_bBanned )
-			{
-				oExServiceReadLock.unlock();
+						postLog( LogSeverity::Debug, tr( "URL already banned. Not going do add it." ) );
+					}
+					else if ( pService->m_nServiceType == stBanned || pService->m_bBanned )
+					{
+						oExServiceReadLock.unlock();
 
-				// ban existing service
-				pExService->m_oRWLock.lockForWrite();
-				pExService->m_bBanned = true;
-				pExService->m_oRWLock.unlock();
+						// ban existing service
+						pExService->m_oRWLock.lockForWrite();
+						pExService->m_bBanned = true;
+						pExService->m_oRWLock.unlock();
 
-				postLog( LogSeverity::Debug,
-						 tr( "Setting exinting service with same URL to \"banned\"." ) );
-			}
-			else
-			{
+						postLog( LogSeverity::Debug,
+								 tr( "Setting exinting service with same URL to \"banned\"." ) );
+					}
+					else
+					{
 
-			}
-		}
+					}
+				}
 
-		if ( sURL.startsWith( sExURL ) )
-		{
-			if ( pExService->m_nServiceType == stBanned || pExService->m_bBanned )
-			{
-				// existing bans do override everything
+				if ( sURL.startsWith( sExURL ) )
+				{
+					if ( pExService->m_nServiceType == stBanned || pExService->m_bBanned )
+					{
+						// existing bans do override everything
 
-				postLog( LogSeverity::Debug, tr( "URL already banned. Not going do add it." ) );
-			}
-			else if ( pService->m_nServiceType == stBanned || pService->m_bBanned )
-			{
-				oExServiceReadLock.unlock();
+						postLog( LogSeverity::Debug, tr( "URL already banned. Not going do add it." ) );
+					}
+					else if ( pService->m_nServiceType == stBanned || pService->m_bBanned )
+					{
+						oExServiceReadLock.unlock();
 
-				// ban existing service
-				pExService->m_oRWLock.lockForWrite();
-				pExService->m_bBanned = true;
-				pExService->m_oRWLock.unlock();
+						// ban existing service
+						pExService->m_oRWLock.lockForWrite();
+						pExService->m_bBanned = true;
+						pExService->m_oRWLock.unlock();
 
-				postLog( LogSeverity::Debug,
-						 tr( "Setting exinting service with same URL to \"banned\"." ) );
-			}
-			else
-			{
+						postLog( LogSeverity::Debug,
+								 tr( "Setting exinting service with same URL to \"banned\"." ) );
+					}
+					else
+					{
 
-			}
-		}*/
+					}
+				}*/
 	}
 
 	pService->m_oRWLock.unlock();
@@ -1466,12 +1676,12 @@ bool CDiscovery::manageDuplicates(TServicePtr& pService)
  * @param sURL
  * @return true if sURL has been changed; false if sURL has not seen a change
  */
-bool CDiscovery::normalizeURL(QString& sURL)
+bool Manager::normalizeURL( QString& sURL )
 {
 	const QString sInput = sURL;
 
 	// Check it has a valid protocol
-	if ( sURL.startsWith( "http://" ) || sURL.startsWith("https://") )
+	if ( sURL.startsWith( "http://" ) || sURL.startsWith( "https://" ) )
 	{
 		sURL.remove( QRegularExpression( "/*$" ) );
 		sURL.remove( QRegularExpression( "\\.nyud\\.net:[0-9]+" ) );
@@ -1516,30 +1726,32 @@ bool CDiscovery::normalizeURL(QString& sURL)
  * @return A discovery service for the specified network; Null if no working service could be
  * found for the specified network.
  */
-CDiscovery::TServicePtr CDiscovery::getRandomService(const CNetworkType& oNType)
+Manager::ServicePtr Manager::getRandomService( const NetworkType& oNType )
 {
 #if ENABLE_DISCOVERY_DEBUGGING
 	postLog( LogSeverity::Debug,
 			 QString( "CDiscovery::getRandomService( const CNetworkType: %1 )" ).arg(
-			 oNType.toString() ), true );
+				 oNType.toString() ), true );
 #endif
 
-	TDiscoveryServicesList list;
-	quint16 nTotalRating = 0;		// Used to store accumulative rating of all services
-									// taken under consideration as return value.
-	TServicePtr pService;
+	DiscoveryServicesList list;
+	quint16 nTotalRating = 0;		// Used to store accumulative probability rating of all services
+	// taken under consideration as return value.
+	ServicePtr pService;
 	const quint32 tNow = common::getTNowUTC();
 
-	foreach ( TMapPair pair, m_mServices )
+	for ( DiscoveryServicesMap::const_iterator it = m_mServices.begin();
+		  it != m_mServices.end(); ++it )
 	{
+		const MapPair& pair = *it;
 		pService = pair.second;
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	QString s = QString( "[Discovery] Service : [%1:%2] %3"
-						 ).arg( pService->type(),
-								pService->m_oNetworkType.toString(),
-								pService->m_oServiceURL.toString() );
-	postLog( LogSeverity::Debug, s, true );
+		QString s = QString( "[Discovery] Service : [%1:%2] %3"
+						   ).arg( pService->type(),
+								  pService->m_oNetworkType.toString(),
+								  pService->m_oServiceURL.toString() );
+		postLog( LogSeverity::Debug, s, true );
 #endif
 
 		pService->m_oRWLock.lockForRead();
@@ -1563,6 +1775,7 @@ CDiscovery::TServicePtr CDiscovery::getRandomService(const CNetworkType& oNType)
 				// Revive service
 				pService->setRating( DISCOVERY_MAX_PROBABILITY );
 				++pService->m_nZeroRevivals;
+				pService->m_bZero = true;
 				bRatingEnabled = true;
 
 				pService->m_oRWLock.unlock();
@@ -1580,15 +1793,15 @@ CDiscovery::TServicePtr CDiscovery::getRandomService(const CNetworkType& oNType)
 			list.push_back( pService );
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Service accepted!", true );
+			postLog( LogSeverity::Debug, "Service accepted!", true );
 #endif
 
-			nTotalRating += pService->m_nRating;
+			nTotalRating += pService->m_nProbaMult;
 		}
 		else
 		{
 #if ENABLE_DISCOVERY_DEBUGGING
-	postLog( LogSeverity::Debug, "Service rejected!", true );
+			postLog( LogSeverity::Debug, "Service rejected!", true );
 #endif
 
 			// We don't need to hold a lock to the services we're not going to use.
@@ -1598,19 +1811,19 @@ CDiscovery::TServicePtr CDiscovery::getRandomService(const CNetworkType& oNType)
 
 	if ( list.empty() )
 	{
-		return TServicePtr();
+		return ServicePtr();
 	}
 	else
 	{
 		// Make sure our selection is within [1 ; nTotalRating]
 		quint16 nSelectedRating = ( qrand() % nTotalRating ) + 1;
-		TListIterator   current = list.begin();
-		TServicePtr   pSelected = *current;
+		ListIterator   current  = list.begin();
+		ServicePtr   pSelected  = *current;
 
 		// Iterate threw list until the selected service has been found.
-		while ( nSelectedRating > pSelected->m_nRating )
+		while ( nSelectedRating > pSelected->m_nProbaMult )
 		{
-			nSelectedRating -= pSelected->m_nRating;
+			nSelectedRating -= pSelected->m_nProbaMult;
 			pSelected->m_oRWLock.unlock();
 			pSelected = *( ++current );
 		}
@@ -1622,62 +1835,13 @@ CDiscovery::TServicePtr CDiscovery::getRandomService(const CNetworkType& oNType)
 		}
 
 #if ENABLE_DISCOVERY_DEBUGGING
-	QString s = QString( "[Discovery] Service selected: [%1:%2] %3"
-						 ).arg( pSelected->type(),
-								pSelected->m_oNetworkType.toString(),
-								pSelected->m_oServiceURL.toString() );
-	postLog( LogSeverity::Debug, s, true );
+		QString s = QString( "[Discovery] Service selected: [%1:%2] %3"
+						   ).arg( pSelected->type(),
+								  pSelected->m_oNetworkType.toString(),
+								  pSelected->m_oServiceURL.toString() );
+		postLog( LogSeverity::Debug, s, true );
 #endif
 
 		return pSelected;
-	}
-}
-
-/**
- * @brief postLog writes a message to the system log or to the debug output.
- * Requires locking: /
- * @param severity
- * @param message
- * @param bDebug Defaults to false. If set to true, the message is send  to qDebug() instead of
- * to the system log.
- */
-void CDiscovery::postLog(LogSeverity::Severity severity, QString message,
-						 bool bDebug, TServiceID nID)
-{
-	QString sMessage;
-
-	if ( nID )
-	{
-		sMessage += tr( "ID:" ) += QString::number( nID ) += " ";
-	}
-
-	switch ( severity )
-	{
-	case LogSeverity::Warning:
-		sMessage += tr ( "Warning: " );
-		break;
-
-	case LogSeverity::Error:
-		sMessage += tr ( "Error: " );
-		break;
-
-	case LogSeverity::Critical:
-		sMessage += tr ( "Critical Error: " );
-		break;
-
-	default:
-		break; // do nothing
-	}
-
-	sMessage += message;
-
-	if ( bDebug )
-	{
-		sMessage = discoveryManager.m_sMessage + sMessage;
-		qDebug() << sMessage.toLocal8Bit().constData();
-	}
-	else
-	{
-		systemLog.postLog( severity, Components::Discovery, sMessage );
 	}
 }

@@ -42,117 +42,119 @@
 
 #include "debug_new.h"
 
-CNetwork Network;
-CThread NetworkThread;
+NetworkG2 networkG2;
+CThread networkThread;
 
-CNetwork::CNetwork(QObject* parent) :
-	QObject(parent)
+NetworkG2::NetworkG2( QObject* parent ) :
+	QObject( parent )
 {
-	m_pSecondTimer = 0;
-	//m_oAddress.port = 6346;
-	m_oAddress.setPort(quazaaSettings.Connection.Port);
+	m_oAddress.setPort( quazaaSettings.Connection.Port );
 
+	m_pSecondTimer     = 0;
 	m_tCleanRoutesNext = 60;
-
-	m_bSharesReady = false;
-
+	m_bSharesReady     = false;
 }
-CNetwork::~CNetwork()
+NetworkG2::~NetworkG2()
 {
-	if(m_bActive)
-	{
-		stop();
-	}
+	stop();
 }
 
-void CNetwork::start()
+/**
+ * @brief start Starts the G2 network thread and connects to the network if the network has not
+ * already been started.
+ */
+void NetworkG2::start()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	if(m_bActive)
+	if ( m_bActive )
 	{
-		systemLog.postLog(LogSeverity::Debug, "Network already started");
+		systemLog.postLog( LogSeverity::Debug, "Network already started" );
 		return;
 	}
 
 	m_bActive = true;
-	m_oAddress.setPort(quazaaSettings.Connection.Port);
+	m_oAddress.setPort( quazaaSettings.Connection.Port );
 
-	Handshakes.listen();
+	handshakes.listen();
 
 	m_oRoutingTable.clear();
 
-	connect(&ShareManager, SIGNAL(sharesReady()), this, SLOT(onSharesReady()), Qt::UniqueConnection);
+	connect( &shareManager, &ShareManager::sharesReady,
+			 this, &NetworkG2::onSharesReady, Qt::UniqueConnection );
 
-	NetworkThread.start("Network", &m_pSection, this);
+	networkThread.start( "Network", &m_pSection, this );
 
-	Datagrams.moveToThread(&NetworkThread);
-
-	SearchManager.moveToThread(&NetworkThread);
-	Neighbours.moveToThread(&NetworkThread);
-	Neighbours.connectNode();
-
+	datagrams.moveToThread( &networkThread );
+	searchManager.moveToThread( &networkThread );
+	neighbours.moveToThread( &networkThread );
+	neighbours.connectNode();
 }
-void CNetwork::stop()
-{
-	QMutexLocker l(&m_pSection);
 
-	if(m_bActive)
+/**
+ * @brief NetworkG2::stop Disconnects from the G2 network and stops the network thread if it is
+ * currently active.
+ */
+void NetworkG2::stop()
+{
+	m_pSection.lock();
+	if ( m_bActive )
 	{
 		m_bActive = false;
-		NetworkThread.exit(0);
+		networkThread.exit( 0 );
 	}
-
+	m_pSection.unlock();
 }
-void CNetwork::setupThread()
+void NetworkG2::setupThread()
 {
-	Q_ASSERT(m_pSecondTimer == 0);
+	Q_ASSERT( m_pSecondTimer == 0 );
 
 	m_pSecondTimer = new QTimer();
-	connect(m_pSecondTimer, SIGNAL(timeout()), this, SLOT(onSecondTimer()));
-	m_pSecondTimer->start(1000);
+	connect( m_pSecondTimer, SIGNAL( timeout() ), this, SLOT( onSecondTimer() ) );
+	m_pSecondTimer->start( 1000 );
 
-	Datagrams.listen();
-	Handshakes.listen();
+	datagrams.listen();
+	handshakes.listen();
 
-	m_bSharesReady = ShareManager.sharesAreReady();
+	m_bSharesReady = shareManager.sharesAreReady();
 }
-void CNetwork::cleanupThread()
+void NetworkG2::cleanupThread()
 {
+	qDebug() << "Starting Cleanup...";
+
 	m_pSecondTimer->stop();
 	delete m_pSecondTimer;
 	m_pSecondTimer = 0;
-	//	WebCache.CancelRequests();
 
 	qDebug() << "Shutting down Handshakes...";
-	Handshakes.stop();
+	handshakes.stop();
 	qDebug() << "Shutting down Datagrams...";
-	Datagrams.disconnectNode();
+	datagrams.disconnectNode();
 	qDebug() << "Shutting down Neighbours...";
-	Neighbours.disconnectNode();
+	neighbours.disconnectNode();
 
-	moveToThread(qApp->thread());
+	moveToThread( qApp->thread() );
 
 	qDebug() << "Cleanup complete.";
 }
 
-void CNetwork::onSecondTimer()
+void NetworkG2::onSecondTimer()
 {
-	if(!m_pSection.tryLock(150))
+	if ( !m_pSection.tryLock( 150 ) )
 	{
-		systemLog.postLog(LogSeverity::Warning, tr("WARNING: Network core overloaded!"));
+		systemLog.postLog( LogSeverity::Warning, tr( "WARNING: Network core overloaded!" ) );
 		return;
 	}
 
-	if(!m_bActive)
+	if ( !m_bActive )
 	{
 		m_pSection.unlock();
 		return;
 	}
 
-	if(m_tCleanRoutesNext > 0)
+	if ( m_tCleanRoutesNext > 0 )
 	{
-		m_tCleanRoutesNext--;
+		--m_tCleanRoutesNext;
 	}
 	else
 	{
@@ -161,110 +163,132 @@ void CNetwork::onSecondTimer()
 		m_tCleanRoutesNext = 60;
 	}
 
-	if(!QueryHashMaster.isValid())
+	if ( !queryHashMaster.isValid() )
 	{
-		QueryHashMaster.build();
+		queryHashMaster.build();
 	}
 
-	Neighbours.maintain();
+	neighbours.maintain();
 
-	SearchManager.onTimer();
+	searchManager.onTimer();
 
 	m_pSection.unlock();
 
-	emit Datagrams.sendQueueUpdated();
+	emit datagrams.sendQueueUpdated();
 }
 
-bool CNetwork::isListening()
+bool NetworkG2::isListening() const
 {
-	return Handshakes.isListening() && Datagrams.isListening();
+	return handshakes.isListening() && datagrams.isListening();
 }
 
-bool CNetwork::isFirewalled()
+bool NetworkG2::isFirewalled() const
 {
-	return Datagrams.isFirewalled() || Handshakes.isFirewalled();
+	return datagrams.isFirewalled() || handshakes.isFirewalled();
 }
 
-void CNetwork::acquireLocalAddress(QString& sHeader)
+bool NetworkG2::acquireLocalAddress( const QString& sHeader )
 {
-	CEndPoint hostAddr(sHeader, m_oAddress.port());
+	EndPoint hostAddr( sHeader, m_oAddress.port() );
 
-	if(hostAddr.isValid())
+	if ( hostAddr.isValid() )
 	{
-		if( hostAddr != m_oAddress )
+		if ( hostAddr != m_oAddress )
 		{
 			m_oAddress = hostAddr;
+			qDebug() << "*** localAddressChanged emitted";
 			emit localAddressChanged();
 		}
+
+		return true;
 	}
-}
-
-bool CNetwork::isConnectedTo(CEndPoint /*addr*/)
-{
-	return false;
-}
-
-bool CNetwork::routePacket(QUuid& pTargetGUID, G2Packet* pPacket, bool bLockNeighbours, bool bBuffered)
-{
-	CG2Node* pNode = 0;
-	CEndPoint pAddr;
-
-	if(m_oRoutingTable.find(pTargetGUID, &pNode, &pAddr))
+	else
 	{
-		if(pNode)
-		{
-			if( bLockNeighbours )
-			{
-				Neighbours.m_pSection.lock();
-			}
-
-			if( Neighbours.neighbourExists(pNode) )
-			{
-				pNode->sendPacket(pPacket, bBuffered, false);
-				systemLog.postLog(LogSeverity::Debug, QString("CNetwork::RoutePacket %1 Packet: %2 routed to neighbour: %3").arg(pTargetGUID.toString()).arg(pPacket->getType()).arg(pNode->m_oAddress.toString().toLocal8Bit().constData()));
-			}
-
-			if( bLockNeighbours )
-			{
-				Neighbours.m_pSection.unlock();
-			}
-			return true;
-		}
-		else if(pAddr.isValid())
-		{
-			Datagrams.sendPacket(pAddr, pPacket, true);
-			systemLog.postLog(LogSeverity::Debug, QString("CNetwork::RoutePacket %1 Packet: %2 routed to remote node: %3").arg(pTargetGUID.toString()).arg(pPacket->getType()).arg(pAddr.toString().toLocal8Bit().constData()));
-			return true;
-		}
-		systemLog.postLog(LogSeverity::Debug, QString("CNetwork::RoutePacket - No node and no address!"));
+		return false;
 	}
+}
 
-	systemLog.postLog(LogSeverity::Debug, QString("CNetwork::RoutePacket %1 Packet: %2 DROPPED!").arg(pTargetGUID.toString()).arg(pPacket->getType()));
+bool NetworkG2::isConnectedTo(const EndPoint& /*addr*/ ) const
+{
 	return false;
 }
-bool CNetwork::routePacket(G2Packet* pPacket, CG2Node* pNbr)
+
+bool NetworkG2::routePacket(const QUuid& pTargetGUID, G2Packet* pPacket, bool bLockNeighbours, bool bBuffered )
+{
+	G2Node* pNode = 0;
+	EndPoint pAddr;
+
+	if ( m_oRoutingTable.find( pTargetGUID, &pNode, &pAddr ) )
+	{
+		if ( pNode )
+		{
+			if ( bLockNeighbours )
+			{
+				neighbours.m_pSection.lock();
+			}
+
+			if ( neighbours.neighbourExists( pNode ) )
+			{
+				pNode->sendPacket( pPacket, bBuffered, false );
+#if LOG_ROUTED_PACKETS
+				systemLog.postLog( LogSeverity::Debug,
+								   QString( "CNetwork::RoutePacket %1 Packet: %2 routed to neighbour: %3" ).arg( pTargetGUID.toString() ).arg(
+									   pPacket->GetType() ).arg( pNode->m_oAddress.toString().toLocal8Bit().constData() ) );
+#endif
+			}
+
+			if ( bLockNeighbours )
+			{
+				neighbours.m_pSection.unlock();
+			}
+			return true;
+		}
+		else if ( pAddr.isValid() )
+		{
+			datagrams.sendPacket( pPacket, pAddr, true );
+
+#if LOG_ROUTED_PACKETS
+			systemLog.postLog( LogSeverity::Debug,
+							   QString( "CNetwork::RoutePacket %1 Packet: %2 routed to remote node: %3" ).arg( pTargetGUID.toString() ).arg(
+								   pPacket->GetType() ).arg( pAddr.toString().toLocal8Bit().constData() ) );
+#endif
+			return true;
+		}
+
+#if LOG_ROUTED_PACKETS
+		systemLog.postLog( LogSeverity::Debug, QString( "CNetwork::RoutePacket - No node and no address!" ) );
+#endif
+	}
+
+#if LOG_ROUTED_PACKETS
+	systemLog.postLog( LogSeverity::Debug,
+					   QString( "CNetwork::RoutePacket %1 Packet: %2 DROPPED!" ).arg( pTargetGUID.toString() ).arg( pPacket->GetType() ) );
+#endif
+	return false;
+}
+bool NetworkG2::routePacket( G2Packet* pPacket, G2Node* pNbr )
 {
 	QUuid pGUID;
 
-	if(pPacket->getTo(pGUID) && pGUID != quazaaSettings.Profile.GUID)   // No and address != my address
+	if ( pPacket->getTo( pGUID ) && pGUID != quazaaSettings.Profile.GUID ) // No and address != my address
 	{
-		CG2Node* pNode = 0;
-		CEndPoint pAddr;
+		G2Node* pNode = 0;
+		EndPoint pAddr;
 
-		if(m_oRoutingTable.find(pGUID, &pNode, &pAddr))
+		if ( m_oRoutingTable.find( pGUID, &pNode, &pAddr ) )
 		{
 			bool bForwardTCP = false;
 			bool bForwardUDP = false;
 
-			if(pNbr)
+			if ( pNbr )
 			{
-				if(pNbr->m_nType == G2_LEAF)    // if received from leaf - can forward anywhere
+				if ( pNbr->m_nType == G2_LEAF ) // if received from leaf - can forward anywhere
 				{
 					bForwardTCP = bForwardUDP = true;
 				}
 				else    // if received from a hub - can be forwarded to leaf
 				{
-					if(pNode && pNode->m_nType == G2_LEAF)
+					if ( pNode && pNode->m_nType == G2_LEAF )
 					{
 						bForwardTCP = true;
 					}
@@ -275,14 +299,14 @@ bool CNetwork::routePacket(G2Packet* pPacket, CG2Node* pNbr)
 				bForwardTCP = true;
 			}
 
-			if(pNode && bForwardTCP)
+			if ( pNode && bForwardTCP )
 			{
-				pNode->sendPacket(pPacket, true, false);
+				pNode->sendPacket( pPacket, true, false );
 				return true;
 			}
-			else if(pAddr.isValid() && bForwardUDP)
+			else if ( pAddr.isValid() && bForwardUDP )
 			{
-				Datagrams.sendPacket(pAddr, pPacket, true);
+				datagrams.sendPacket( pPacket, pAddr, true );
 				return true;
 			}
 			// drop
@@ -292,7 +316,7 @@ bool CNetwork::routePacket(G2Packet* pPacket, CG2Node* pNbr)
 	return false;
 }
 
-void CNetwork::connectToNode(CEndPoint& /*addr*/)
+void NetworkG2::connectToNode( const EndPoint& /*addr*/ )
 {
 	// TODO: Verify network is connected before attempting connection and create connection if it is not
 	/*CG2Node* pNew = Neighbours.ConnectTo(addr);
@@ -303,7 +327,7 @@ void CNetwork::connectToNode(CEndPoint& /*addr*/)
 	}*/
 }
 
-void CNetwork::onSharesReady()
+void NetworkG2::onSharesReady()
 {
 	m_bSharesReady = true;
 }

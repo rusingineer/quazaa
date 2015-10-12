@@ -26,109 +26,107 @@
 
 #include "networktype.h"
 
-CNetworkType::CNetworkType() :
+NetworkType::NetworkType() :
 	m_nNetworks( 0 )
 {
 	registerMetaType();
 }
 
-CNetworkType::CNetworkType(quint16 type) :
+NetworkType::NetworkType( quint16 type ) :
 	m_nNetworks( type )
 {
 	registerMetaType();
 }
 
-CNetworkType::CNetworkType(DiscoveryProtocol type) :
-	m_nNetworks( (quint16)type )
+NetworkType::NetworkType( DiscoveryProtocol::Protocol type ) :
+	m_nNetworks( ( quint16 )type )
 {
 	registerMetaType();
 }
 
-void CNetworkType::registerMetaType() const
-{
-	static int foo = qRegisterMetaType<CNetworkType>( "CNetworkType" );
-	++foo;
-}
-
-bool CNetworkType::operator==(const CNetworkType& type) const
+bool NetworkType::operator==( const NetworkType& type ) const
 {
 	return ( m_nNetworks == type.m_nNetworks );
 }
 
-bool CNetworkType::operator!=(const CNetworkType& type) const
+bool NetworkType::operator!=( const NetworkType& type ) const
 {
 	return ( m_nNetworks != type.m_nNetworks );
 }
 
-bool CNetworkType::isNull() const
+bool NetworkType::isNull() const
 {
 	return !m_nNetworks;
 }
 
-bool CNetworkType::isGnutella() const
+bool NetworkType::isGnutella() const
 {
-	return ( m_nNetworks & dpGnutella );
+	return ( m_nNetworks & DiscoveryProtocol::Gnutella );
 }
 
-void CNetworkType::setGnutella( bool )
+void NetworkType::setGnutella( bool )
 {
-	m_nNetworks |= dpGnutella;
+	m_nNetworks |= DiscoveryProtocol::Gnutella;
 }
 
-bool CNetworkType::isG2() const
+bool NetworkType::isG2() const
 {
-	return ( m_nNetworks & dpG2 );
+	return ( m_nNetworks & DiscoveryProtocol::G2 );
 }
 
-void CNetworkType::setG2( bool )
+void NetworkType::setG2( bool )
 {
-	m_nNetworks |= dpG2;
+	m_nNetworks |= DiscoveryProtocol::G2;
 }
 
-bool CNetworkType::isAres() const
+bool NetworkType::isAres() const
 {
-	return ( m_nNetworks & dpAres );
+	return ( m_nNetworks & DiscoveryProtocol::Ares );
 }
 
-void CNetworkType::setAres( bool )
+void NetworkType::setAres( bool )
 {
-	m_nNetworks |= dpAres;
+	m_nNetworks |= DiscoveryProtocol::Ares;
 }
 
-bool CNetworkType::isEDonkey2000() const
+bool NetworkType::isEDonkey2000() const
 {
-	return ( m_nNetworks & dpeDonkey2000 );
+	return ( m_nNetworks & DiscoveryProtocol::eDonkey2000 );
 }
 
-void CNetworkType::setEDonkey2000( bool )
+void NetworkType::setEDonkey2000( bool )
 {
-	m_nNetworks |= dpeDonkey2000;
+	m_nNetworks |= DiscoveryProtocol::eDonkey2000;
 }
 
-bool CNetworkType::isNetwork(const CNetworkType& type) const
+bool NetworkType::isNetwork( const NetworkType& type ) const
 {
 	return ( m_nNetworks & type.toQuint16() ) == type.toQuint16();
 }
 
-void CNetworkType::setNetwork(const CNetworkType& type)
+void NetworkType::setNetwork( const NetworkType& type )
 {
 	m_nNetworks |= type.m_nNetworks;
 }
 
-bool CNetworkType::isMulti() const
+bool NetworkType::isMulti() const
 {
-	if ( !m_nNetworks || ( m_nNetworks && !(m_nNetworks & (m_nNetworks - 1)) ) )
-		return false;	// m_nNetworks is 0 or power of 2
+	if ( !m_nNetworks || ( m_nNetworks && !( m_nNetworks & ( m_nNetworks - 1 ) ) ) )
+	{
+		return false;    // m_nNetworks is 0 or power of 2
+	}
 	else				// m_nNetworks is not 0 or a power of 2 - meaning there are at
-		return true;	// least 2 different bits set to 1 within the 16 bit uint
+	{
+		return true;    // least 2 different bits set to 1 within the 16 bit uint
+	}
 }
 
-quint16 CNetworkType::toQuint16() const
+quint16 NetworkType::toQuint16() const
 {
 	return m_nNetworks;
 }
 
-QString CNetworkType::toString() const
+QString NetworkType::toString() const
 {
 	if ( !m_nNetworks )
 	{

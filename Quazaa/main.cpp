@@ -27,7 +27,6 @@
 #include "winmain.h"
 #include "quazaaglobals.h"
 #include "quazaasettings.h"
-#include "timedsignalqueue.h"
 
 #include "geoiplist.h"
 #include "network.h"
@@ -38,10 +37,11 @@
 #include "sharemanager.h"
 #include "commonfunctions.h"
 #include "transfers.h"
-#include "hostcache.h"
 
+#include "Misc/timedsignalqueue.h"
+#include "Security/securitymanager.h"
+#include "HostCache/g2hostcache.h"
 #include "Discovery/discovery.h"
-#include "securitymanager.h"
 
 #include <QNetworkProxy>
 #include <QFont>
@@ -61,61 +61,78 @@
 #include "debug_new.h"
 
 #ifdef _SNAPSHOT_BUILD
-	#include <QMessageBox>
-	#include "version.h"
+#include <QMessageBox>
+#include "version.h"
 #endif
 
-static void setApplicationProxy(QUrl url)
+static void setApplicationProxy( QUrl url )
 {
 	if ( !url.isEmpty() )
 	{
 		if ( url.port() == -1 )
+		{
 			url.setPort( 8080 );
+		}
 		QNetworkProxy proxy( QNetworkProxy::HttpProxy, url.host(), url.port(),
 							 url.userName(), url.password() );
-		QNetworkProxy::setApplicationProxy(proxy);
+		QNetworkProxy::setApplicationProxy( proxy );
 	}
 }
 
-CQuazaaGlobals quazaaGlobals;
+//QuazaaGlobals quazaaGlobals;
 
-int main(int argc, char *argv[])
+int main( int argc, char* argv[] )
 {
 #ifdef Q_OS_MAC
 	// QTBUG-32789 - GUI widgets use the wrong font on OS X Mavericks
-	QFont::insertSubstitution(".Lucida Grande UI", "Lucida Grande");
+	QFont::insertSubstitution( ".Lucida Grande UI", "Lucida Grande" );
 #endif
 
 	SingleApplication theApp( argc, argv );
 
-	if(!theApp.shouldContinue())return 0;
+	if ( !theApp.shouldContinue() )
+	{
+		return 0;
+	}
 
 	QStringList args = theApp.arguments();
 
 	QUrl proxy;
-	int index = args.indexOf("-proxy");
+	int index = args.indexOf( "-proxy" );
 	if ( index != -1 )
-		proxy = QUrl( args.value(index + 1) );
+	{
+		proxy = QUrl( args.value( index + 1 ) );
+	}
 	else
+	{
 		proxy = QUrl( qgetenv( "http_proxy" ) );
+	}
 	if ( !proxy.isEmpty() )
+	{
 		setApplicationProxy( proxy );
+	}
 
 	QByteArray encoding;
 	index = args.indexOf( "-encoding" );
 	if ( index != -1 )
+	{
 		encoding = args.value( index + 1 ).toLocal8Bit();
-	else if ( !qgetenv( "COMMUNI_ENCODING" ).isEmpty())
+	}
+	else if ( !qgetenv( "COMMUNI_ENCODING" ).isEmpty() )
+	{
 		encoding = qgetenv( "COMMUNI_ENCODING" );
+	}
 	if ( !encoding.isEmpty() )
+	{
 		SingleApplication::setEncoding( encoding );
+	}
 
 
 // To enable this, run qmake with "DEFINES+=_SNAPSHOT_BUILD"
 #ifdef _SNAPSHOT_BUILD
 	QDate oExpire = QDate::fromString( Version::BUILD_DATE, Qt::ISODate ).addDays( 60 );
 
-	if( QDate::currentDate() > oExpire )
+	if ( QDate::currentDate() > oExpire )
 	{
 		QMessageBox::information( NULL,
 								  QObject::tr( "Cool Software, but..." ),
@@ -126,21 +143,23 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	if( !args.contains("--no-alpha-warning") )
+	if ( !args.contains( "--no-alpha-warning" ) )
 	{
 		int ret = QMessageBox::warning( NULL,
-										QObject::tr("Snapshot/Debug Build Warning"),
-										QObject::tr("WARNING: This is a SNAPSHOT BUILD of Quazaa. \n"
-													"It is NOT meant for GENERAL USE, and is only for testi"
-													"ng specific features in a controlled environment.\n"
-													"It will frequently stop running, or will display debug"
-													"information to assist testing.\n"
-													"This build will expire on %1.\n\n"
-													"Do you wish to continue?"
-													).arg( oExpire.toString( Qt::SystemLocaleLongDate ) ),
-									   QMessageBox::Yes | QMessageBox::No );
-		if( ret == QMessageBox::No )
+										QObject::tr( "Snapshot/Debug Build Warning" ),
+										QObject::tr( "WARNING: This is a SNAPSHOT BUILD of Quazaa. \n"
+													 "It is NOT meant for GENERAL USE, and is only for testi"
+													 "ng specific features in a controlled environment.\n"
+													 "It will frequently stop running, or will display debug"
+													 "information to assist testing.\n"
+													 "This build will expire on %1.\n\n"
+													 "Do you wish to continue?"
+												   ).arg( oExpire.toString( Qt::SystemLocaleLongDate ) ),
+										QMessageBox::Yes | QMessageBox::No );
+		if ( ret == QMessageBox::No )
+		{
 			return 0;
+		}
 	}
 #endif
 
@@ -154,7 +173,7 @@ int main(int argc, char *argv[])
 
 	sLimit.rlim_cur = sLimit.rlim_max;
 
-	if( setrlimit( RLIMIT_NOFILE, &sLimit ) == 0 )
+	if ( setrlimit( RLIMIT_NOFILE, &sLimit ) == 0 )
 	{
 		qDebug() << "Successfully raised resource limits";
 	}
@@ -165,11 +184,11 @@ int main(int argc, char *argv[])
 
 #endif // Q_OS_LINUX
 
-	theApp.setApplicationName(    CQuazaaGlobals::APPLICATION_NAME() );
-	theApp.setApplicationVersion( CQuazaaGlobals::APPLICATION_VERSION_STRING() );
-	theApp.setOrganizationDomain( CQuazaaGlobals::APPLICATION_ORGANIZATION_DOMAIN() );
-	theApp.setOrganizationName(   CQuazaaGlobals::APPLICATION_ORGANIZATION_NAME() );
-	theApp.setApplicationSlogan( QObject::tr("World class file sharing.") );
+	theApp.setApplicationName(    QuazaaGlobals::APPLICATION_NAME() );
+	theApp.setApplicationVersion( QuazaaGlobals::APPLICATION_VERSION_STRING() );
+	theApp.setOrganizationDomain( QuazaaGlobals::APPLICATION_ORGANIZATION_DOMAIN() );
+	theApp.setOrganizationName(   QuazaaGlobals::APPLICATION_ORGANIZATION_NAME() );
+	theApp.setApplicationSlogan(  QObject::tr( "World class file sharing." ) );
 
 	QIcon icon;
 	icon.addFile( ":/Resource/Quazaa16.png" );
@@ -193,9 +212,9 @@ int main(int argc, char *argv[])
 
 	// If the MainWindow object is not created and shown before any other dialogs,
 	// the media player will break input event processing
-	MainWindow = new CWinMain();
-	MainWindow->show();
-	MainWindow->hide();
+	mainWindow = new CWinMain();
+	mainWindow->show();
+	mainWindow->hide();
 
 	//Create splash window
 	CDialogSplash* dlgSplash = new CDialogSplash();
@@ -226,58 +245,62 @@ int main(int argc, char *argv[])
 		wzrdQuickStart->exec();
 	}
 
+	// Initialize GeoIP list
+	dlgSplash->updateProgress( 12, QObject::tr( "Loading GeoIP..." ) );
+	qApp->processEvents();
+	geoIP.loadGeoIP();
+
 	// Load Security Manager
-	dlgSplash->updateProgress( 15, QObject::tr( "Loading Security Manager..." ) );
+	dlgSplash->updateProgress( 17, QObject::tr( "Loading Security Manager..." ) );
 	qApp->processEvents();
 	if ( !securityManager.start() )
 		systemLog.postLog( LogSeverity::Information,
 						   QObject::tr( "Security data file was not available." ) );
 
+	//Load Host Cache
+	dlgSplash->updateProgress( 22, QObject::tr( "Loading Host Cache..." ) );
+	qApp->processEvents();
+	hostCache.start();
+
 	// Load Discovery Services Manager
-	dlgSplash->updateProgress( 22, QObject::tr( "Loading Discovery Services Manager..." ) );
+	dlgSplash->updateProgress( 32, QObject::tr( "Loading Discovery Services Manager..." ) );
 	qApp->processEvents();
 	discoveryManager.start();
 
 	//Load profile
-	dlgSplash->updateProgress( 25, QObject::tr( "Loading Profile..." ) );
+	dlgSplash->updateProgress( 38, QObject::tr( "Loading Profile..." ) );
 	qApp->processEvents();
 	quazaaSettings.loadProfile();
 
-	//Load Host Cache
-	dlgSplash->updateProgress( 30, QObject::tr( "Loading Host Cache..." ) );
-	qApp->processEvents();
-	hostCache.m_pSection.lock();
-	hostCache.load();
-	hostCache.m_pSection.unlock();
-
-	//initialize geoip list
-	geoIP.loadGeoIP();
-
 	//Load the library
-	dlgSplash->updateProgress( 38, QObject::tr( "Loading Library..." ) );
+	dlgSplash->updateProgress( 40, QObject::tr( "Loading Library..." ) );
 	qApp->processEvents();
-	QueryHashMaster.create();
-	ShareManager.start();
+	queryHashMaster.create();
+	shareManager.start();
 
 	// Load Download Manager
 	dlgSplash->updateProgress( 60, QObject::tr( "Loading Transfer Manager..." ) );
 	qApp->processEvents();
-	Transfers.start();
+	transfers.start();
 
 	dlgSplash->updateProgress( 80, QObject::tr( "Loading User Interface..." ) );
 	qApp->processEvents();
 
 	if ( quazaaSettings.WinMain.Visible )
 	{
-		if(bFirstRun)
-			MainWindow->showMaximized();
+		if ( bFirstRun )
+		{
+			mainWindow->showMaximized();
+		}
 		else
-			MainWindow->show();
+		{
+			mainWindow->show();
+		}
 	}
 
 	dlgSplash->updateProgress( 90, QObject::tr( "Loading Tray Icon..." ) );
 	qApp->processEvents();
-	MainWindow->loadTrayIcon();
+	mainWindow->loadTrayIcon();
 
 	dlgSplash->updateProgress( 100, QObject::tr( "Welcome to Quazaa!" ) );
 	qApp->processEvents();
@@ -290,7 +313,7 @@ int main(int argc, char *argv[])
 	{
 		if ( quazaaSettings.Gnutella2.Enable )
 		{
-			Network.start();
+			networkG2.start();
 		}
 	}
 

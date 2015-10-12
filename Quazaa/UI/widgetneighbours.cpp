@@ -47,32 +47,33 @@
 #include <QMenu>
 #include <QInputDialog>
 
-CWidgetNeighbours::CWidgetNeighbours(QWidget* parent) :
-	QMainWindow(parent),
-	ui(new Ui::CWidgetNeighbours)
+CWidgetNeighbours::CWidgetNeighbours( QWidget* parent ) :
+	QMainWindow( parent ),
+	ui( new Ui::CWidgetNeighbours )
 {
-	ui->setupUi(this);
-	neighboursMenu = new QMenu(ui->tableViewNeighbours);
-	neighboursMenu->addAction(ui->actionNeighbourDisconnect);
-	neighboursMenu->addAction(ui->actionNetworkBan);
+	ui->setupUi( this );
+	neighboursMenu = new QMenu( ui->tableViewNeighbours );
+	neighboursMenu->addAction( ui->actionNeighbourDisconnect );
+	neighboursMenu->addAction( ui->actionNetworkBan );
 	neighboursMenu->addSeparator();
-	neighboursMenu->addAction(ui->actionNetworkChatWith);
-	neighboursMenu->addAction(ui->actionViewProfile);
-	neighboursMenu->addAction(ui->actionNetworkBrowse);
+	neighboursMenu->addAction( ui->actionNetworkChatWith );
+	neighboursMenu->addAction( ui->actionViewProfile );
+	neighboursMenu->addAction( ui->actionNetworkBrowse );
 	labelG2StatsIcon = new QLabel();
-	QPixmap const pixmapG2Stats = QPixmap(":/Resource/Networks/Gnutella2.png");
-	labelG2StatsIcon->setPixmap(pixmapG2Stats);
-	labelG2StatsIcon->setScaledContents(true);
-	labelG2StatsIcon->setMaximumSize(16, 16);
+	QPixmap const pixmapG2Stats = QPixmap( ":/Resource/Networks/Gnutella2.png" );
+	labelG2StatsIcon->setPixmap( pixmapG2Stats );
+	labelG2StatsIcon->setScaledContents( true );
+	labelG2StatsIcon->setMaximumSize( 16, 16 );
 	labelG2Stats = new QLabel();
-	ui->toolBarG2->addWidget(labelG2StatsIcon);
-	ui->toolBarG2->addWidget(labelG2Stats);
-	restoreState(quazaaSettings.WinMain.NeighboursToolbars);
-	ui->tableViewNeighbours->horizontalHeader()->restoreState(quazaaSettings.WinMain.NeighboursHeader);
+	ui->toolBarG2->addWidget( labelG2StatsIcon );
+	ui->toolBarG2->addWidget( labelG2Stats );
+	restoreState( quazaaSettings.WinMain.NeighboursToolbars );
+	ui->tableViewNeighbours->horizontalHeader()->restoreState( quazaaSettings.WinMain.NeighboursHeader );
 
-	neighboursList = new CNeighboursTableModel(this, treeView());
-	setModel(neighboursList);
-	neighboursList->sort(ui->tableViewNeighbours->horizontalHeader()->sortIndicatorSection(), ui->tableViewNeighbours->horizontalHeader()->sortIndicatorOrder());
+	neighboursList = new NeighboursTableModel( this, treeView() );
+	setModel( neighboursList );
+	neighboursList->sort( ui->tableViewNeighbours->horizontalHeader()->sortIndicatorSection(),
+						  ui->tableViewNeighbours->horizontalHeader()->sortIndicatorOrder() );
 	setSkin();
 }
 
@@ -82,22 +83,22 @@ CWidgetNeighbours::~CWidgetNeighbours()
 	delete ui;
 }
 
-void CWidgetNeighbours::changeEvent(QEvent* e)
+void CWidgetNeighbours::changeEvent( QEvent* e )
 {
-	QMainWindow::changeEvent(e);
-	switch(e->type())
+	QMainWindow::changeEvent( e );
+	switch ( e->type() )
 	{
-		case QEvent::LanguageChange:
-			ui->retranslateUi(this);
-			break;
-		default:
-			break;
+	case QEvent::LanguageChange:
+		ui->retranslateUi( this );
+		break;
+	default:
+		break;
 	}
 }
 
-void CWidgetNeighbours::setModel(QAbstractItemModel* model)
+void CWidgetNeighbours::setModel( QAbstractItemModel* model )
 {
-	ui->tableViewNeighbours->setModel(model);
+	ui->tableViewNeighbours->setModel( model );
 }
 
 QWidget* CWidgetNeighbours::treeView()
@@ -113,7 +114,7 @@ void CWidgetNeighbours::saveWidget()
 
 void CWidgetNeighbours::on_actionSettings_triggered()
 {
-	CDialogSettings* dlgSettings = new CDialogSettings(this, SettingsPage::Protocols);
+	CDialogSettings* dlgSettings = new CDialogSettings( this, SettingsPage::Protocols );
 	dlgSettings->show();
 }
 
@@ -126,26 +127,27 @@ void CWidgetNeighbours::updateG2()
 	quint32 nUDPInSpeed = 0;
 	quint32 nUDPOutSpeed = 0;
 
-	if(Neighbours.m_pSection.tryLock(50))
+	if ( neighbours.m_pSection.tryLock( 50 ) )
 	{
-		nHubsConnected = Neighbours.m_nHubsConnectedG2;
-		nLeavesConnected = Neighbours.m_nLeavesConnectedG2;
+		nHubsConnected = neighbours.m_nHubsConnectedG2;
+		nLeavesConnected = neighbours.m_nLeavesConnectedG2;
 
-		nTCPInSpeed = Neighbours.downloadSpeed();
-		nTCPOutSpeed = Neighbours.uploadSpeed();
+		nTCPInSpeed = neighbours.downloadSpeed();
+		nTCPOutSpeed = neighbours.uploadSpeed();
 
-		if(Network.m_pSection.tryLock(50))
+		if ( networkG2.m_pSection.tryLock( 50 ) )
 		{
-			nUDPInSpeed = Datagrams.downloadSpeed();
-			nUDPOutSpeed = Datagrams.uploadSpeed();
+			nUDPInSpeed = datagrams.downloadSpeed();
+			nUDPOutSpeed = datagrams.uploadSpeed();
 
-			Network.m_pSection.unlock();
+			networkG2.m_pSection.unlock();
 		}
 
-		Neighbours.m_pSection.unlock();
+		neighbours.m_pSection.unlock();
 	}
 
-	labelG2Stats->setText(tr(" %1 Hubs, %2 Leaves, %3/s In:%4/s Out").arg(nHubsConnected).arg(nLeavesConnected).arg(common::formatBytes(nTCPInSpeed + nUDPInSpeed)).arg(common::formatBytes(nTCPOutSpeed + nUDPOutSpeed)));
+	labelG2Stats->setText( tr( " %1 Hubs, %2 Leaves, %3/s In:%4/s Out" ).arg( nHubsConnected ).arg( nLeavesConnected ).arg(
+							   common::formatBytes( nTCPInSpeed + nUDPInSpeed ) ).arg( common::formatBytes( nTCPOutSpeed + nUDPOutSpeed ) ) );
 }
 
 void CWidgetNeighbours::updateAres()
@@ -166,19 +168,19 @@ void CWidgetNeighbours::onTimer()
 
 void CWidgetNeighbours::on_actionNeighbourConnectTo_triggered()
 {
-	CDialogConnectTo* dlgConnectTo = new CDialogConnectTo(this);
+	CDialogConnectTo* dlgConnectTo = new CDialogConnectTo( this );
 	bool accepted = dlgConnectTo->exec();
 
-	if (accepted)
+	if ( accepted )
 	{
-		CEndPoint ip(dlgConnectTo->getAddressAndPort());
+		EndPoint ip( dlgConnectTo->getAddressAndPort() );
 
-		switch (dlgConnectTo->getConnectNetwork())
+		switch ( dlgConnectTo->getConnectNetwork() )
 		{
 		case CDialogConnectTo::G2:
-			Neighbours.m_pSection.lock();
-			Neighbours.connectTo(ip, dpG2, false);
-			Neighbours.m_pSection.unlock();
+			neighbours.m_pSection.lock();
+			neighbours.connectTo( ip, DiscoveryProtocol::G2, false );
+			neighbours.m_pSection.unlock();
 			break;
 		case CDialogConnectTo::eDonkey:
 			break;
@@ -193,48 +195,52 @@ void CWidgetNeighbours::on_actionNeighbourConnectTo_triggered()
 void CWidgetNeighbours::on_actionNeighbourDisconnect_triggered()
 {
 	QModelIndex idx = ui->tableViewNeighbours->currentIndex();
-	CNeighbour* pNode = neighboursList->nodeFromIndex(idx);
+	Neighbour* pNode = neighboursList->nodeFromIndex( idx );
 
-	if( pNode == 0 )
-		return;
-
-	Neighbours.m_pSection.lock();
-	if ( Neighbours.neighbourExists(pNode) )
+	if ( pNode == 0 )
 	{
-		systemLog.postLog( LogSeverity::Information, Components::Network,
+		return;
+	}
+
+	neighbours.m_pSection.lock();
+	if ( neighbours.neighbourExists( pNode ) )
+	{
+		systemLog.postLog( LogSeverity::Information, Component::Network,
 						   qPrintable( tr( "Closing connection to neighbour %s" ) ),
-						   qPrintable( pNode->m_oAddress.toStringWithPort() ) );
+						   qPrintable( pNode->address().toStringWithPort() ) );
 		pNode->close();
 	}
-	Neighbours.m_pSection.unlock();
+	neighbours.m_pSection.unlock();
 }
 
-void CWidgetNeighbours::on_tableViewNeighbours_customContextMenuRequested(QPoint pos)
+void CWidgetNeighbours::on_tableViewNeighbours_customContextMenuRequested( QPoint pos )
 {
-	QModelIndex currIndex = ui->tableViewNeighbours->indexAt(pos);
-	if( currIndex.isValid() )
+	QModelIndex currIndex = ui->tableViewNeighbours->indexAt( pos );
+	if ( currIndex.isValid() )
 	{
-		neighboursMenu->exec(QCursor::pos());
+		neighboursMenu->exec( QCursor::pos() );
 	}
 }
 
 void CWidgetNeighbours::on_actionNetworkChatWith_triggered()
 {
-	QMutexLocker l(&Neighbours.m_pSection);
+	QMutexLocker l( &neighbours.m_pSection );
 
-	if (ui->tableViewNeighbours->currentIndex().isValid())
+	if ( ui->tableViewNeighbours->currentIndex().isValid() )
 	{
 		QModelIndex idx = ui->tableViewNeighbours->currentIndex();
-		CNeighbour* pNode = neighboursList->nodeFromIndex(idx);
+		Neighbour* pNode = neighboursList->nodeFromIndex( idx );
 
-		if( pNode == 0 )
+		if ( pNode == 0 )
+		{
 			return;
+		}
 
-		switch( pNode->m_nProtocol)
+		switch ( pNode->m_nProtocol )
 		{
-		case dpG2:
+		case DiscoveryProtocol::G2:
 		{
-			CChatSessionG2* pSession = new CChatSessionG2(pNode->m_oAddress);
+			ChatSessionG2* pSession = new ChatSessionG2( pNode->address() );
 			pSession->connectNode();
 			break;
 		}
@@ -247,23 +253,27 @@ void CWidgetNeighbours::on_actionNetworkChatWith_triggered()
 
 void CWidgetNeighbours::setSkin()
 {
-	ui->tableViewNeighbours->setStyleSheet(skinSettings.listViews);
+	ui->tableViewNeighbours->setStyleSheet( skinSettings.listViews );
 }
 
-void CWidgetNeighbours::on_tableViewNeighbours_doubleClicked(const QModelIndex &index)
+void CWidgetNeighbours::on_tableViewNeighbours_doubleClicked( const QModelIndex& index )
 {
-	CNeighboursTableModel::Neighbour* pNbr = static_cast<CNeighboursTableModel::Neighbour*>(index.internalPointer());
-	CDialogNeighbourInfo* dlgNeighbourInfo = new CDialogNeighbourInfo(pNbr, this);
+	NeighboursTableModel::NeighbourData* pNbr = static_cast<NeighboursTableModel::NeighbourData*>
+												( index.internalPointer() );
+	DialogNeighbourInfo* dlgNeighbourInfo = new DialogNeighbourInfo( pNbr, this );
 	dlgNeighbourInfo->exec();
 }
 
 void CWidgetNeighbours::on_actionNetworkBan_triggered()
 {
-	CNeighboursTableModel::Neighbour* pNbr = static_cast<CNeighboursTableModel::Neighbour*>(ui->tableViewNeighbours->currentIndex().internalPointer());
+	NeighboursTableModel::NeighbourData* pNbr = static_cast<NeighboursTableModel::NeighbourData*>
+												( ui->tableViewNeighbours->currentIndex().internalPointer() );
 	bool ok;
-	QString reason = QInputDialog::getText(this, tr("Ban Reason"), tr("Please enter a ban reason."), QLineEdit::Normal, "", &ok);
-	if(ok && !reason.isEmpty()) {
-		securityManager.ban(pNbr->oAddress, RuleTime::Special, false, reason, false, true);
+	QString reason = QInputDialog::getText( this, tr( "Ban Reason" ), tr( "Please enter a ban reason." ), QLineEdit::Normal,
+											"", &ok );
+	if ( ok && !reason.isEmpty() )
+	{
+		securityManager.ban( pNbr->oAddress, Security::RuleTime::SixMonths, false, reason, false );
 		on_actionNeighbourDisconnect_triggered();
 	}
 }

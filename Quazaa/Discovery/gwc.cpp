@@ -22,34 +22,28 @@
 ** Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QStringList>
-#include <QUrlQuery>
-
+#include "Security/securitymanager.h"
 #include "network.h"
-#include "quazaaglobals.h"
 #include "version.h"
 
 #include "gwc.h"
 
 using namespace Discovery;
 
-CGWC::CGWC(const QUrl& oURL, const CNetworkType& oNType, quint8 nRating) :
-	CDiscoveryService( oURL, oNType, nRating ),
+GWC::GWC( const QUrl& oURL, const NetworkType& oNType, quint8 nRating ) :
+	DiscoveryService( oURL, oNType, nRating ),
 	m_pRequest( NULL ),
 	m_bGnutella( true ),
 	m_bG2( true )
 {
-	m_nServiceType = stGWC;
+	m_nServiceType = ServiceType::GWC;
 }
 
-CGWC::~CGWC()
+GWC::~GWC()
 {
 	if ( m_pRequest )
 	{
 		delete m_pRequest;
-		m_pRequest = NULL;
 
 		// if there is a request, there must be a manager
 		Q_ASSERT( m_pNAMgr );
@@ -58,13 +52,13 @@ CGWC::~CGWC()
 	}
 }
 
-QString CGWC::type() const
+QString GWC::type() const
 {
 	return isBanned() ? QString( "Banned GWC" ) : QString( "GWC" );
 }
 
 // caller needs to make sure the cache is not currently running
-void CGWC::doQuery() throw()
+void GWC::doQuery() throw()
 {
 	QUrl oURL = m_oServiceURL;
 	QString sVersion = QString::number( Version::MAJOR ) + "." + QString::number( Version::MINOR );
@@ -75,9 +69,9 @@ void CGWC::doQuery() throw()
 		query.addQueryItem( "ping", "1" );
 		query.addQueryItem( "get", "1" );
 		query.addQueryItem( "net", "gnutella2" );
-		query.addQueryItem( "client", CQuazaaGlobals::VENDOR_CODE() );
+		query.addQueryItem( "client", QuazaaGlobals::VENDOR_CODE() );
 		query.addQueryItem( "version", sVersion.toLocal8Bit().data() );
-		oURL.setQuery(query);
+		oURL.setQuery( query );
 	}
 
 	// inform user
@@ -87,28 +81,27 @@ void CGWC::doQuery() throw()
 
 	// generate request
 	m_pRequest = new QNetworkRequest( oURL );
-	m_pRequest->setRawHeader( "User-Agent", CQuazaaGlobals::USER_AGENT_STRING().toLocal8Bit() );
+	m_pRequest->setRawHeader( "User-Agent", QuazaaGlobals::USER_AGENT_STRING().toLocal8Bit() );
 
 	// obtain network access manager for query
 	m_pNAMgr = discoveryManager.requestNAM();
 
-	connect( m_pNAMgr.data(), &QNetworkAccessManager::finished,
-			 this, &CGWC::requestCompleted );
+	connect( m_pNAMgr.data(), &QNetworkAccessManager::finished, this, &GWC::requestCompleted );
 
 	// do query
 	m_pNAMgr->get( *m_pRequest );
 }
 
-void CGWC::doUpdate() throw()
+void GWC::doUpdate() throw()
 {
 	QUrl oURL = m_oServiceURL;
 	QString sVersion = QString::number( Version::MAJOR ) + "." + QString::number( Version::MINOR );
 
-	Network.m_pSection.lock();
-	QString sOwnIP = Network.getLocalAddress().toStringWithPort();
-	Network.m_pSection.unlock();
+	networkG2.m_pSection.lock();
+	QString sOwnIP = networkG2.localAddress().toStringWithPort();
+	networkG2.m_pSection.unlock();
 
-	QString sPromoteURL = discoveryManager.getWorkingService( stGWC );
+	QString sPromoteURL = discoveryManager.getWorkingService( ServiceType::GWC );
 
 	// build query
 	{
@@ -117,7 +110,7 @@ void CGWC::doUpdate() throw()
 		query.addQueryItem( "update", "1" );
 		query.addQueryItem( "net", "gnutella2" );
 		query.addQueryItem( "ip", sOwnIP );
-		query.addQueryItem( "client", CQuazaaGlobals::VENDOR_CODE() );
+		query.addQueryItem( "client", QuazaaGlobals::VENDOR_CODE() );
 		query.addQueryItem( "version", sVersion );
 
 		if ( !sPromoteURL.isEmpty() )
@@ -125,7 +118,7 @@ void CGWC::doUpdate() throw()
 			query.addQueryItem( "url", QUrl::toPercentEncoding( sPromoteURL ) );
 		}
 
-		oURL.setQuery(query);
+		oURL.setQuery( query );
 	}
 
 	// inform user
@@ -135,33 +128,42 @@ void CGWC::doUpdate() throw()
 
 	// generate request
 	m_pRequest = new QNetworkRequest( oURL );
-	m_pRequest->setRawHeader( "User-Agent", CQuazaaGlobals::USER_AGENT_STRING().toLocal8Bit() );
+	m_pRequest->setRawHeader( "User-Agent", QuazaaGlobals::USER_AGENT_STRING().toLocal8Bit() );
 
 	// obtain network access manager for update
 	m_pNAMgr = discoveryManager.requestNAM();
 
 	connect( m_pNAMgr.data(), &QNetworkAccessManager::finished,
-			 this, &CGWC::requestCompleted );
+			 this, &GWC::requestCompleted );
 
 	// do query
 	m_pNAMgr->get( *m_pRequest );
 }
 
-void CGWC::doCancelRequest() throw()
+void GWC::doCancelRequest() throw()
 {
 	disconnect( m_pNAMgr.data(), &QNetworkAccessManager::finished,
-				this, &CGWC::requestCompleted );
+				this, &GWC::requestCompleted );
 
-	delete m_pRequest;
-	m_pRequest = NULL;
+	if ( m_pRequest )
+	{
+		delete m_pRequest;
+		m_pRequest = NULL;
+	}
+
 	m_pNAMgr.clear();     // we don't need the network access manager anymore
 
 	resetRunning();
 }
 
-void CGWC::requestCompleted(QNetworkReply* pReply)
+void GWC::requestCompleted( QNetworkReply* pReply )
 {
 	QWriteLocker oGWCLock( &m_oRWLock );
+
+	if ( pReply && pReply->request() != *m_pRequest )
+	{
+		return; // reply was meant for sb else
+	}
 
 	if ( !pReply || !isRunning() || !m_pRequest ) // we got cancelled while waiting for the lock
 	{
@@ -171,7 +173,9 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 		resetRunning();
 
 		if ( pReply )
+		{
 			pReply->deleteLater();
+		}
 
 		if ( m_pRequest )
 		{
@@ -188,10 +192,15 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 		return;
 	}
 
-	if ( pReply->request() != *m_pRequest )
+	if ( handleRedirect( m_pNAMgr, pReply, m_pRequest ) )
 	{
-		return; // reply was meant for sb else
+		return; // we got redirected to an alternate URL
+		// in this case handleRedirect() has send a new query using the exisiting NAM
 	}
+
+	// connection not needed anymore
+	disconnect( m_pNAMgr.data(), &QNetworkAccessManager::finished,
+				this, &GWC::requestCompleted );
 
 	postLog( LogSeverity::Debug, tr( "Recieved answer from GWC." ) );
 
@@ -199,9 +208,9 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 	quint16 nHosts = 0;
 	quint16 nURLs  = 0;
 
-	bool bUpdateOK = false;     // in case we did update, was it successful?
-	QList<QString>   lURLList;  // alternate services returned by the GWC
-	QList<CEndPoint> lHostList; // hosts returned by the GWC
+	bool bUpdateOK = false;    // in case we did update, was it successful?
+	QList<QString>  lURLList;  // alternate services returned by the GWC
+	QList<EndPoint> lHostList; // hosts returned by the GWC
 
 	if ( pReply->error() == QNetworkReply::NoError )
 	{
@@ -286,7 +295,7 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 				else if ( lp[0] == "H" || lp[0] == "h" )
 				{
 					// found host
-					lHostList.push_back( CEndPoint( lp[1] ) );
+					lHostList.push_back( EndPoint( lp[1] ) );
 					++nHosts;
 				}
 				else if ( lp[0] == "U" || lp[0] == "u" )
@@ -324,7 +333,7 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 	}
 
 	// make sure all statistics and failure counters are updated
-	updateStatistics( nHosts, nURLs, bUpdateOK );
+	updateStatistics( false, nHosts, nURLs, bUpdateOK );
 
 	// clean up
 	pReply->deleteLater();
@@ -335,7 +344,7 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 	// make sure the service is not reported as running anymore
 	resetRunning();
 
-	TServiceType oServiceType = m_nServiceType;
+	ServiceType::Type nServiceType = m_nServiceType;
 
 	// finished accessing GWC variables
 	oGWCLock.unlock();
@@ -343,22 +352,23 @@ void CGWC::requestCompleted(QNetworkReply* pReply)
 	// add new services to manager
 	while ( lURLList.size() )
 	{
-		discoveryManager.add( lURLList.back(), oServiceType, CNetworkType( dpG2 ) );
+		discoveryManager.add( lURLList.back(), nServiceType,
+							  NetworkType( DiscoveryProtocol::G2 ), DISCOVERY_MAX_PROBABILITY );
 		lURLList.pop_back();
 	}
 
 	const quint32 tNow = common::getTNowUTC();
 
-	// prepare for adding new hosts
-	QMutexLocker l( &hostCache.m_pSection );
-
 	while ( lHostList.size() )
 	{
-		hostCache.add( lHostList.back(), tNow );
+		if ( !securityManager.isDenied( lHostList.back() ) )
+		{
+			hostCache.add( lHostList.back(), tNow, id() );
+		}
 		lHostList.pop_back();
 	}
 
 	postLog( LogSeverity::Debug,
 			 QString( "Host Cache count after querying GWC: " ) +
-			 QString::number( hostCache.count() ), true );
+			 QString::number( hostCache.size() ), true );
 }

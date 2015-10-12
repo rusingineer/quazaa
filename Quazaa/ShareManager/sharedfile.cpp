@@ -38,37 +38,37 @@
 #include "queryhashtable.h"
 #include "debug_new.h"
 
-CSharedFile::CSharedFile(QObject* parent) :
-	CFile( parent )
+SharedFile::SharedFile( QObject* parent ) :
+	File( parent )
 {
 	setup();
 }
 
-CSharedFile::CSharedFile(const QString& file, QObject* parent) :
-	CFile( file, parent )
+SharedFile::SharedFile( const QString& file, QObject* parent ) :
+	File( file, parent )
 {
 	setup();
 }
 
-CSharedFile::CSharedFile(const QFile& file, QObject* parent) :
-	CFile( file, parent )
+SharedFile::SharedFile( const QFile& file, QObject* parent ) :
+	File( file, parent )
 {
 	setup();
 }
 
-CSharedFile::CSharedFile(const QDir& dir, const QString& file, QObject* parent) :
-	CFile( dir, file, parent )
+SharedFile::SharedFile( const QDir& dir, const QString& file, QObject* parent ) :
+	File( dir, file, parent )
 {
 	setup();
 }
 
-CSharedFile::CSharedFile(const QFileInfo& fileinfo, QObject* parent) :
-	CFile( fileinfo, parent )
+SharedFile::SharedFile( const QFileInfo& fileinfo, QObject* parent ) :
+	File( fileinfo, parent )
 {
 	setup();
 }
 
-void CSharedFile::serialize(QSqlDatabase* pDatabase)
+void SharedFile::serialize( QSqlDatabase* pDatabase )
 {
 	// get directory id if needed
 	if ( m_nDirectoryID == 0 )
@@ -91,7 +91,7 @@ void CSharedFile::serialize(QSqlDatabase* pDatabase)
 
 		query.next();
 
-		m_nDirectoryID = query.value(0).toLongLong();
+		m_nDirectoryID = query.value( 0 ).toLongLong();
 	}
 
 	// now insert or update file record
@@ -123,11 +123,15 @@ void CSharedFile::serialize(QSqlDatabase* pDatabase)
 		QMap<QString, QVariant> mapValues;
 		mapValues.insert( "file_id", QVariant( nFileID ) );
 
-		foreach ( CHash oHash, m_Hashes )
+		for ( quint8 i = 0, nSize = m_vHashes.size(); i < nSize; ++i )
 		{
-			if ( pDatabase->record( "hashes" ).contains( oHash.getFamilyName() ) )
+			const Hash* const pHash =  m_vHashes[i];
+			if ( pHash )
 			{
-				mapValues.insert( oHash.getFamilyName(), oHash.rawValue() );
+				if ( pDatabase->record( "hashes" ).contains( pHash->getFamilyName() ) )
+				{
+					mapValues.insert( pHash->getFamilyName(), pHash->rawValue() );
+				}
 			}
 		}
 
@@ -154,22 +158,23 @@ void CSharedFile::serialize(QSqlDatabase* pDatabase)
 			int nCurrPos = 0;
 			for ( QMap<QString, QVariant>::iterator itValues = mapValues.begin(); itValues != mapValues.end(); itValues++ )
 			{
-				qh.bindValue( nCurrPos, QVariant(itValues.value() ) );
+				qh.bindValue( nCurrPos, QVariant( itValues.value() ) );
 				nCurrPos++;
 			}
 
 			if ( !qh.exec() )
 			{
-				systemLog.postLog( LogSeverity::Debug, QString( "Cannot insert hashes: %1 %2" ).arg( qh.lastError().text() ).arg(qh.executedQuery() ) );
+				systemLog.postLog( LogSeverity::Debug,
+								   QString( "Cannot insert hashes: %1 %2" ).arg( qh.lastError().text() ).arg( qh.executedQuery() ) );
 			}
 		}
 
 		QStringList lKeywords;
-		CQueryHashTable::makeKeywords( fileName(), lKeywords );
+		QueryHashTable::makeKeywords( fileName(), lKeywords );
 
 		QSqlQuery qkw( *pDatabase );
 		qkw.prepare( "INSERT OR IGNORE INTO keywords (keyword) VALUES (?)" );
-		foreach ( QString sKey, lKeywords )
+		foreach ( const QString & sKey, lKeywords )
 		{
 			qkw.bindValue( 0, QVariant( sKey ) );
 			qkw.exec();
@@ -179,11 +184,11 @@ void CSharedFile::serialize(QSqlDatabase* pDatabase)
 	}
 }
 
-void CSharedFile::setup()
+void SharedFile::setup()
 {
 	m_bShared = false;
 
-	static int dummy = qRegisterMetaType<CSharedFilePtr>( "CSharedFilePtr" );
-	Q_UNUSED(dummy);
+	static int dummy = qRegisterMetaType<SharedFilePtr>( "SharedFilePtr" );
+	Q_UNUSED( dummy );
 }
 

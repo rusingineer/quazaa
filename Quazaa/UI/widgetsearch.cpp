@@ -30,15 +30,13 @@
 
 #include "systemlog.h"
 #include "suggestedlineedit.h"
-#include <QNetworkAccessManager>
-
-QNetworkAccessManager netManager; // TODO: move it to a better place ;)
 
 #include "debug_new.h"
 
-CWidgetSearch::CWidgetSearch(QWidget* parent) :
+WidgetSearch::WidgetSearch( QWidget* parent ) :
 	QWidget( parent ),
-	ui( new Ui::CWidgetSearch )
+	netManager( QNetworkAccessManager() ),
+	ui( new Ui::WidgetSearch )
 {
 	ui->setupUi( this );
 	ui->comboBoxSearchFileType->setView( new QListView() );
@@ -49,10 +47,12 @@ CWidgetSearch::CWidgetSearch(QWidget* parent) :
 	ui->toolButtonSearchNetworksTaskHeader->setChecked( quazaaSettings.WinMain.SearchNetworksTaskVisible );
 	ui->toolButtonSearchResultsTaskHeader->setChecked( quazaaSettings.WinMain.SearchResultsTaskVisible );
 	ui->toolButtonSearchTaskHeader->setChecked( quazaaSettings.WinMain.SearchTaskVisible );
-	panelSearchResults = new CWidgetSearchResults();
+	panelSearchResults = new WidgetSearchResults();
 	ui->verticalLayoutSearchResults->addWidget( panelSearchResults );
-	connect( panelSearchResults, SIGNAL( searchTabChanged( CWidgetSearchTemplate* ) ), this, SLOT( onSearchTabChanged( CWidgetSearchTemplate* ) ) );
-	connect( panelSearchResults, SIGNAL( statsUpdated( CWidgetSearchTemplate* ) ), this, SLOT( updateStats( CWidgetSearchTemplate* ) ) );
+	connect( panelSearchResults, SIGNAL( searchTabChanged( WidgetSearchTemplate* ) ), this,
+			 SLOT( onSearchTabChanged( WidgetSearchTemplate* ) ) );
+	connect( panelSearchResults, SIGNAL( statsUpdated( WidgetSearchTemplate* ) ), this,
+			 SLOT( updateStats( WidgetSearchTemplate* ) ) );
 	connect( panelSearchResults, SIGNAL( stateChanged() ), this, SLOT( updateButtons() ) );
 	panelSearchResults->on_tabWidgetSearch_currentChanged( -1 );
 	setSkin();
@@ -64,25 +64,25 @@ CWidgetSearch::CWidgetSearch(QWidget* parent) :
 	pSuggest->setNetworkAccessManager( &netManager );
 }
 
-CWidgetSearch::~CWidgetSearch()
+WidgetSearch::~WidgetSearch()
 {
 	delete ui;
 }
 
-void CWidgetSearch::changeEvent(QEvent* e)
+void WidgetSearch::changeEvent( QEvent* e )
 {
 	QWidget::changeEvent( e );
-	switch( e->type() )
+	switch ( e->type() )
 	{
-		case QEvent::LanguageChange:
-			ui->retranslateUi( this );
-			break;
-		default:
-			break;
+	case QEvent::LanguageChange:
+		ui->retranslateUi( this );
+		break;
+	default:
+		break;
 	}
 }
 
-void CWidgetSearch::saveWidget()
+void WidgetSearch::saveWidget()
 {
 	quazaaSettings.WinMain.SearchSplitter = ui->splitterSearch->saveState();
 	quazaaSettings.WinMain.SearchFileTypeTaskVisible = ui->toolButtonSearchFiletypeTaskHeader->isChecked();
@@ -92,11 +92,11 @@ void CWidgetSearch::saveWidget()
 	panelSearchResults->saveWidget();
 }
 
-void CWidgetSearch::on_toolButtonSearch_clicked()
+void WidgetSearch::on_toolButtonSearch_clicked()
 {
-	if ( currentPage->m_searchState == SearchState::Paused  ||
-		 currentPage->m_searchState == SearchState::Stopped ||
-		 currentPage->m_searchState == SearchState::Default )
+	if ( currentPage->m_eSearchState == SearchState::Paused  ||
+		 currentPage->m_eSearchState == SearchState::Stopped ||
+		 currentPage->m_eSearchState == SearchState::Default )
 	{
 		// TODO: handle additional criteria
 		panelSearchResults->startSearch( ui->lineEditSearch->text() );
@@ -105,10 +105,10 @@ void CWidgetSearch::on_toolButtonSearch_clicked()
 	focusSearchInput();
 }
 
-void CWidgetSearch::on_toolButtonSearchClear_clicked()
+void WidgetSearch::on_toolButtonSearchClear_clicked()
 {
-	if ( currentPage->m_searchState == SearchState::Searching ||
-		 currentPage->m_searchState == SearchState::Paused )
+	if ( currentPage->m_eSearchState == SearchState::Searching ||
+		 currentPage->m_eSearchState == SearchState::Paused )
 	{
 		panelSearchResults->stopSearch();
 	}
@@ -125,23 +125,23 @@ void CWidgetSearch::on_toolButtonSearchClear_clicked()
 	focusSearchInput();
 }
 
-void CWidgetSearch::startNewSearch(QString* searchString)
+void WidgetSearch::startNewSearch( QString* searchString )
 {
 	panelSearchResults->startNewSearch( searchString );
 	focusSearchInput();
 }
 
-void CWidgetSearch::on_toolButtonNewSearch_clicked()
+void WidgetSearch::on_toolButtonNewSearch_clicked()
 {
 	panelSearchResults->addSearchTab();
 	focusSearchInput();
 }
 
-void CWidgetSearch::on_splitterSearch_customContextMenuRequested(QPoint pos)
+void WidgetSearch::on_splitterSearch_customContextMenuRequested( QPoint pos )
 {
 	Q_UNUSED( pos );
 
-	if ( ui->splitterSearch->handle(1)->underMouse() )
+	if ( ui->splitterSearch->handle( 1 )->underMouse() )
 	{
 		if ( ui->splitterSearch->sizes()[0] > 0 )
 		{
@@ -162,7 +162,7 @@ void CWidgetSearch::on_splitterSearch_customContextMenuRequested(QPoint pos)
 	}
 }
 
-void CWidgetSearch::onSearchTabChanged(CWidgetSearchTemplate* searchPage)
+void WidgetSearch::onSearchTabChanged( WidgetSearchTemplate* searchPage )
 {
 	currentPage = searchPage;
 	ui->lineEditSearch->setText( searchPage->m_sSearchString );
@@ -171,11 +171,14 @@ void CWidgetSearch::onSearchTabChanged(CWidgetSearchTemplate* searchPage)
 	focusSearchInput();
 }
 
-void CWidgetSearch::updateStats(CWidgetSearchTemplate* searchWidget)
+void WidgetSearch::updateStats( WidgetSearchTemplate* searchWidget )
 {
-	ui->labelSearchResultsSearching->setText( tr( "%1 hubs,%2 leaves." ).arg( searchWidget->m_nHubs ).arg( searchWidget->m_nLeaves ) );
-	ui->labelSearchResultsFound->setText( tr( "%1 files in %2 hits." ).arg( searchWidget->m_nFiles ).arg( searchWidget->m_nHits ) );
-	if ( searchWidget->m_nHubs == 0 && searchWidget->m_nLeaves == 0 && searchWidget->m_searchState != SearchState::Searching )
+	ui->labelSearchResultsSearching->setText( tr( "%1 hubs,%2 leaves." ).arg( searchWidget->m_nHubs ).arg(
+												  searchWidget->m_nLeaves ) );
+	ui->labelSearchResultsFound->setText( tr( "%1 files in %2 hits." ).arg( searchWidget->m_nFiles ).arg(
+											  searchWidget->m_nHits ) );
+	if ( searchWidget->m_nHubs == 0 && searchWidget->m_nLeaves == 0
+		 && searchWidget->m_eSearchState != SearchState::Searching )
 	{
 		ui->labelSearchResultsSearching->setText( tr( "Not Currently Searching" ) );
 	}
@@ -185,11 +188,11 @@ void CWidgetSearch::updateStats(CWidgetSearchTemplate* searchWidget)
 	}
 }
 
-void CWidgetSearch::updateButtons(bool bInitial)
+void WidgetSearch::updateButtons( bool bInitial )
 {
-	CWidgetSearchTemplate* searchPage = currentPage;
+	WidgetSearchTemplate* searchPage = currentPage;
 
-	switch( searchPage->m_searchState )
+	switch ( searchPage->m_eSearchState )
 	{
 	case SearchState::Searching:
 		ui->toolButtonSearch->setText( tr( "Searching" ) );
@@ -229,12 +232,12 @@ void CWidgetSearch::updateButtons(bool bInitial)
 	}
 }
 
-void CWidgetSearch::focusSearchInput()
+void WidgetSearch::focusSearchInput()
 {
 	ui->lineEditSearch->setFocus();
 }
 
-void CWidgetSearch::setSkin()
+void WidgetSearch::setSkin()
 {
 	ui->frameSearchTask->setStyleSheet( skinSettings.sidebarTaskBackground );
 	ui->frameSearchNetworksTask->setStyleSheet( skinSettings.sidebarTaskBackground );

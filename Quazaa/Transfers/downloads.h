@@ -4,33 +4,33 @@
 #include <QObject>
 #include <QMutex>
 
-class CQueryHit;
-class CDownload;
+class QueryHit;
+class Download;
 
-class CDownloads : public QObject
+class Downloads : public QObject
 {
 	Q_OBJECT
 public:
 	QMutex m_pSection;
 
-	QList<CDownload*> m_lDownloads;
+	QList<Download*> m_lDownloads;
 public:
-	CDownloads(QObject *parent = 0);
+	Downloads( QObject* parent = 0 );
 
 	void start();
 	void stop();
 
-	void add(CQueryHit* pHit);
+	void add( QueryHit* pHit );
 
-	bool exists(CDownload* pDownload);
+	bool exists( Download* pDownload );
 signals:
-	void downloadAdded(CDownload*);
+	void downloadAdded( Download* );
 	void downloadRemoved();
 public slots:
 	void emitDownloads();
 	void onTimer();
 };
 
-extern CDownloads Downloads;
+extern Downloads downloads;
 
 #endif // DOWNLOADS_H

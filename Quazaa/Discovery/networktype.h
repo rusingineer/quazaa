@@ -28,29 +28,32 @@
 #include <QtGlobal>
 #include <QString>
 
-enum DiscoveryProtocol
+namespace DiscoveryProtocol
 {
-	dpNull        = 0,
-	dpGnutella    = 1,
-	dpG2          = 2,
-	dpAres        = 4,
-	dpeDonkey2000 = 8
+enum Protocol
+{
+	None        = 0,
+	Gnutella    = 1,
+	G2          = 2,
+	Ares        = 4,
+	eDonkey2000 = 8
 };
+}
 
-class CNetworkType
+class NetworkType
 {
 private:
 	quint16 m_nNetworks;
 
 public:
-	CNetworkType();
-	CNetworkType(quint16 type);
-	CNetworkType(DiscoveryProtocol type);
+	NetworkType();
+	NetworkType( quint16 type );
+	NetworkType( DiscoveryProtocol::Protocol type );
 
-	void registerMetaType() const;
+	inline void registerMetaType() const;
 
-	bool operator==(const CNetworkType& type) const;
-	bool operator!=(const CNetworkType& type) const;
+	bool operator==( const NetworkType& type ) const;
+	bool operator!=( const NetworkType& type ) const;
 
 	bool isNull() const;
 
@@ -66,8 +69,8 @@ public:
 	bool isEDonkey2000() const;
 	void setEDonkey2000( bool );
 
-	bool isNetwork(const CNetworkType& type) const;
-	void setNetwork(const CNetworkType& type);
+	bool isNetwork( const NetworkType& type ) const;
+	void setNetwork( const NetworkType& type );
 
 	bool isMulti() const;
 
@@ -75,5 +78,11 @@ public:
 
 	QString toString() const;
 };
+
+void NetworkType::registerMetaType() const
+{
+	static int foo = qRegisterMetaType<NetworkType>( "NetworkType" );
+	Q_UNUSED( foo );
+}
 
 #endif // NETWORKTYPE_H

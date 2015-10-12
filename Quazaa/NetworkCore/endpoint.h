@@ -26,136 +26,125 @@
 #define ENDPOINT_H
 
 #include <QHostAddress>
+#include "geoiplist.h"
 
-class CEndPoint : public QHostAddress
+class EndPoint : public QHostAddress
 {
 protected:
 	quint16	m_nPort;
+	mutable QString m_sCountryCode;
 
 public:
-	CEndPoint();
-	explicit CEndPoint(quint32 ip4Addr, quint16 nPort = 0);
-	explicit CEndPoint(quint8* ip6Addr, quint16 nPort = 0);
-	explicit CEndPoint(const Q_IPV6ADDR& ip6Addr, quint16 nPort = 0);
-	explicit CEndPoint(const sockaddr* sockaddr, quint16 nPort = 0);
-	explicit CEndPoint(const QString& address, quint16 nPort);
-	explicit CEndPoint(const QString& address);
-	explicit CEndPoint(const QHostAddress& address, quint16 nPort);
-	CEndPoint(const CEndPoint& copy);
-	CEndPoint(SpecialAddress address, quint16 nPort = 0);
-	void setAddressWithPort(const QString& address);
+	EndPoint();
+	explicit EndPoint( quint32 ip4Addr, quint16 nPort = 0 );
+	explicit EndPoint( quint8* ip6Addr, quint16 nPort = 0 );
+	explicit EndPoint( const Q_IPV6ADDR& ip6Addr, quint16 nPort = 0 );
+	explicit EndPoint( const sockaddr* sockaddr, quint16 nPort = 0 );
+	explicit EndPoint( const QString& address, quint16 nPort );
+	explicit EndPoint( const QString& address );
+	explicit EndPoint( const QHostAddress& address, quint16 nPort );
+	EndPoint( const EndPoint& copy );
+	EndPoint( SpecialAddress address, quint16 nPort = 0 );
 
-	CEndPoint& operator=(const CEndPoint& rhs);
-	CEndPoint& operator++();
-	CEndPoint& operator--();
-	CEndPoint operator++(int);
-	CEndPoint operator--(int);
-	inline bool operator==(const CEndPoint& rhs) const;
-	inline bool operator!=(const CEndPoint& rhs) const;
-	inline bool operator<(const CEndPoint& rhs) const;
-	inline bool operator>(const CEndPoint& rhs) const;
-	inline bool operator<=(const CEndPoint& rhs) const;
-	inline bool operator>=(const CEndPoint& rhs) const;
-	inline bool operator==(const QHostAddress& rhs) const;
-	inline bool operator!=(const QHostAddress& rhs) const;
+	EndPoint& operator=( const EndPoint& rhs );
+	EndPoint& operator++();
+	EndPoint& operator--();
+	EndPoint operator++( int );
+	EndPoint operator--( int );
 
-public:
-	void clear();
+	bool operator==( const EndPoint& rhs ) const;
+	bool operator!=( const EndPoint& rhs ) const;
+	bool operator<( const EndPoint& rhs ) const;
+	bool operator>( const EndPoint& rhs ) const;
+	bool operator<=( const EndPoint& rhs ) const;
+	bool operator>=( const EndPoint& rhs ) const;
+
+	bool operator==( const QHostAddress& rhs ) const;
+	bool operator!=( const QHostAddress& rhs ) const;
+
+	void setAddress( quint32 ip4Addr );
+	void setAddress( quint8* ip6Addr );
+	void setAddress( const Q_IPV6ADDR& ip6Addr );
+	bool setAddress( const QString& address );
+	void setAddress( const sockaddr* sockaddr );
+	void setAddress( const QHostAddress& rhs );
+	void setAddressWithPort( const QString& address );
 	QString toStringWithPort() const;
 
 	quint16 port() const;
-	void setPort(const quint16 nPort);
+	void setPort( const quint16 nPort );
 
 	bool isFirewalled() const;
 	bool isValid() const;
 
-	friend QDataStream &operator<<(QDataStream &, const CEndPoint &);
-	friend QDataStream &operator>>(QDataStream &, CEndPoint &);
+	QString country() const;
+	QString countryName() const;
+
+	void clear();
+
+	friend QDataStream& operator<<( QDataStream&, const EndPoint& );
+	friend QDataStream& operator>>( QDataStream&, EndPoint& );
 };
 
-bool CEndPoint::operator ==(const CEndPoint& rhs) const
+QDataStream& operator<<( QDataStream& s, const EndPoint& rhs );
+QDataStream& operator>>( QDataStream& s, EndPoint& rhs );
+
+namespace std
 {
-	return ( QHostAddress::operator ==( rhs ) && m_nPort == rhs.m_nPort );
+template <>
+/**
+ * @brief The hash<QHostAddress> struct provides a 32 bit hash of a given QHostAddress, thus
+ * allowing the usage of the QHostAddress class together with std::unordered_map.
+ */
+struct hash<QHostAddress> : public unary_function<QHostAddress, quint32>
+{
+	/**
+	 * @brief operator() Hashes a given value and returns its 32 bit hash.
+	 * @param value The QHostAddress to hash.
+	 * @return The 32 bit hash of the QHostAddress.
+	 */
+	quint32 operator()( const QHostAddress& value ) const
+	{
+		if ( value.protocol() == QAbstractSocket::IPv4Protocol )
+		{
+			return value.toIPv4Address();
+		}
+		else
+		{
+			Q_IPV6ADDR addr128bit = value.toIPv6Address();
+			quint32* addr32bit = ( quint32* )( &addr128bit );
+			return addr32bit[0] + addr32bit[1] + addr32bit[2] + addr32bit[3];
+		}
+	}
+};
+
+
+template <>
+/**
+ * @brief The hash<EndPoint> struct provides a 32 bit hash of a given EndPoint, thus allowing the
+ * usage of the EndPoint class together with std::unordered_map.
+ */
+struct hash<EndPoint> : public unary_function<EndPoint, quint32>
+{
+	/**
+	 * @brief operator() Hashes a given value and returns its 32 bit hash.
+	 * @param value The EndPoint to hash.
+	 * @return The 32 bit hash of the EndPoint.
+	 */
+	quint32 operator()( const EndPoint& value ) const
+	{
+		if ( value.protocol() == QAbstractSocket::IPv4Protocol )
+		{
+			return value.toIPv4Address() * value.port();
+		}
+		else
+		{
+			Q_IPV6ADDR addr128bit = value.toIPv6Address();
+			quint32* addr32bit = ( quint32* )( &addr128bit );
+			return ( addr32bit[0] + addr32bit[1] + addr32bit[2] + addr32bit[3] ) * value.port();
+		}
+	}
+};
 }
 
-bool CEndPoint::operator !=(const CEndPoint& rhs) const
-{
-	return !operator==( rhs );
-}
-
-bool CEndPoint::operator<(const CEndPoint &rhs) const
-{
-	if( protocol() == QAbstractSocket::IPv4Protocol )
-	{
-		return toIPv4Address() < rhs.toIPv4Address();
-	}
-	else
-	{
-		Q_IPV6ADDR thisAddr = toIPv6Address();
-		Q_IPV6ADDR thatAddr = rhs.toIPv6Address();
-
-		int n = memcmp(&thisAddr, &thatAddr, sizeof(Q_IPV6ADDR));
-		return n < 0;
-	}
-}
-
-bool CEndPoint::operator>(const CEndPoint &rhs) const
-{
-	if( protocol() == QAbstractSocket::IPv4Protocol )
-	{
-		return toIPv4Address() > rhs.toIPv4Address();
-	}
-	else
-	{
-		Q_IPV6ADDR thisAddr = toIPv6Address();
-		Q_IPV6ADDR thatAddr = rhs.toIPv6Address();
-
-		int n = memcmp(&thisAddr, &thatAddr, sizeof(Q_IPV6ADDR));
-		return n > 0;
-	}
-}
-
-bool CEndPoint::operator<=(const CEndPoint &rhs) const
-{
-	if( protocol() == QAbstractSocket::IPv4Protocol )
-	{
-		return toIPv4Address() <= rhs.toIPv4Address();
-	}
-	else
-	{
-		Q_IPV6ADDR thisAddr = toIPv6Address();
-		Q_IPV6ADDR thatAddr = rhs.toIPv6Address();
-
-		int n = memcmp(&thisAddr, &thatAddr, sizeof(Q_IPV6ADDR));
-		return n <= 0;
-	}
-}
-
-bool CEndPoint::operator>=(const CEndPoint &rhs) const
-{
-	if( protocol() == QAbstractSocket::IPv4Protocol )
-	{
-		return toIPv4Address() >= rhs.toIPv4Address();
-	}
-	else
-	{
-		Q_IPV6ADDR thisAddr = toIPv6Address();
-		Q_IPV6ADDR thatAddr = rhs.toIPv6Address();
-
-		int n = memcmp(&thisAddr, &thatAddr, sizeof(Q_IPV6ADDR));
-		return n >= 0;
-	}
-}
-
-bool CEndPoint::operator ==(const QHostAddress& rhs) const
-{
-	return QHostAddress::operator ==( rhs );
-}
-bool CEndPoint::operator !=(const QHostAddress& rhs) const
-{
-	return QHostAddress::operator !=( rhs );
-}
-
-QDataStream &operator<<(QDataStream &s, const CEndPoint &rhs);
-QDataStream &operator>>(QDataStream &s, CEndPoint &rhs);
 #endif // ENDPOINT_H

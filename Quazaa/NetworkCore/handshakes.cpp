@@ -33,29 +33,29 @@
 
 #include "debug_new.h"
 
-CHandshakes Handshakes;
-CThread HandshakesThread;
+Handshakes handshakes;
+CThread handshakesThread;
 
-CHandshakes::CHandshakes(QObject* parent) :
-	QTcpServer(parent)
+Handshakes::Handshakes( QObject* parent ) :
+	QTcpServer( parent )
 {
 	m_nAccepted = 0;
 	m_bActive = false;
 }
 
-CHandshakes::~CHandshakes()
+Handshakes::~Handshakes()
 {
-	if(m_bActive)
+	if ( m_bActive )
 	{
 		stop();
 	}
 }
 
-void CHandshakes::listen()
+void Handshakes::listen()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	if(m_bActive)
+	if ( m_bActive )
 	{
 		return;
 	}
@@ -63,107 +63,113 @@ void CHandshakes::listen()
 	m_nAccepted = 0;
 	m_bActive = true;
 
-	HandshakesThread.start("Handshakes", &m_pSection, this);
+	handshakesThread.start( "Handshakes", &m_pSection, this );
 }
-void CHandshakes::stop()
+void Handshakes::stop()
 {
-	QMutexLocker l(&m_pSection);
-
+	m_pSection.lock();
 	m_bActive = false;
 
-	HandshakesThread.exit(0);
+	handshakesThread.exit( 0 );
 
-	Q_ASSERT(m_lHandshakes.isEmpty());
+	Q_ASSERT( m_lHandshakes.isEmpty() );
+
+	m_pSection.unlock();
 }
 
-void CHandshakes::incomingConnection(qintptr handle)
+void Handshakes::incomingConnection( qintptr handle )
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	CHandshake* pNew = new CHandshake();
-	m_lHandshakes.insert(pNew);
-	pNew->acceptFrom(handle);
-	pNew->moveToThread(&HandshakesThread);
-	m_pController->addSocket(pNew);
+	Handshake* pNew = new Handshake();
+	m_lHandshakes.insert( pNew );
+	pNew->acceptFrom( handle );
+	pNew->moveToThread( &handshakesThread );
+	m_pController->addSocket( pNew );
 	m_nAccepted++;
 
-	if( securityManager.isDenied(pNew->m_oAddress) )
+	qDebug() << pNew->address().toStringWithPort() << " - Handshakes::incomingConnection() - New incomming connection initiated.";
+
+	if ( securityManager.isDenied( pNew->address() ) )
 	{
 		pNew->close();
 		pNew->deleteLater();
+
+		qDebug() << pNew->address().toStringWithPort() << " Incomming connection denied.";
 	}
 }
 
-void CHandshakes::onTimer()
+void Handshakes::onTimer()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	quint32 tNow = time(0);
+	quint32 tNow = time( NULL );
 
-	foreach(CHandshake * pHs, m_lHandshakes)
+	foreach ( Handshake * pHs, m_lHandshakes )
 	{
-		pHs->onTimer(tNow);
+		pHs->onTimer( tNow );
 	}
 }
 
-void CHandshakes::removeHandshake(CHandshake* pHs)
+void Handshakes::removeHandshake( Handshake* pHs )
 {
-	ASSUME_LOCK(Handshakes.m_pSection);
+	ASSUME_LOCK( handshakes.m_pSection );
 
-	m_lHandshakes.remove(pHs);
-	if(m_pController)
+	m_lHandshakes.remove( pHs );
+	if ( m_pController )
 	{
-		m_pController->removeSocket(pHs);
+		m_pController->removeSocket( pHs );
 	}
 }
 
-void CHandshakes::processNeighbour(CHandshake* pHs)
+void Handshakes::processNeighbour( Handshake* pHs )
 {
-	removeHandshake(pHs);
-	Neighbours.onAccept(pHs);
+	removeHandshake( pHs );
+	neighbours.onAccept( pHs );
 }
 
-void CHandshakes::setupThread()
+void Handshakes::setupThread()
 {
-	m_pController = new CRateController(&m_pSection);
+	m_pController = new RateController( &m_pSection );
 
-	m_pController->moveToThread(&HandshakesThread); // should not be necesarry
+	m_pController->moveToThread( &handshakesThread ); // should not be necesarry
 
-	m_pController->setDownloadLimit(4096);
-	m_pController->setUploadLimit(4096);
+	m_pController->setDownloadLimit( 4096 );
+	m_pController->setUploadLimit( 4096 );
 
-	bool bOK = QTcpServer::listen(QHostAddress::Any, Network.getLocalAddress().port());
+	bool bOK = QTcpServer::listen( QHostAddress::Any, networkG2.localAddress().port() );
 
 	if ( bOK )
 	{
-		systemLog.postLog( LogSeverity::Notice, Components::G2,
-						   "Handshakes: listening on port %d.", Network.getLocalAddress().port() );
+		systemLog.postLog( LogSeverity::Notice, Component::G2,
+						   tr( "Handshakes: listening on port %1."
+							 ).arg( networkG2.localAddress().port() ) );
 	}
 	else
 	{
-		systemLog.postLog( LogSeverity::Error, Components::G2,
+		systemLog.postLog( LogSeverity::Error, Component::G2,
 						   "Handshakes: cannot listen on port %d, incoming connections will be unavailable.",
-						   Network.getLocalAddress().port() );
+						   networkG2.localAddress().port() );
 	}
 
-	m_pTimer = new QTimer(this);
-	connect(m_pTimer, SIGNAL(timeout()), this, SLOT(onTimer()));
-	m_pTimer->start(1000);
+	m_pTimer = new QTimer( this );
+	connect( m_pTimer, &QTimer::timeout, this, &Handshakes::onTimer );
+	m_pTimer->start( 1000 );
 }
-void CHandshakes::cleanupThread()
+void Handshakes::cleanupThread()
 {
-	if(isListening())
+	if ( isListening() )
 	{
 		close();
 
-		for( QSet<CHandshake*>::iterator itHs = m_lHandshakes.begin(); itHs != m_lHandshakes.end(); )
+		for ( QSet<Handshake*>::iterator itHs = m_lHandshakes.begin(); itHs != m_lHandshakes.end(); )
 		{
-			CHandshake* pHs = *itHs;
+			Handshake* pHs = *itHs;
 
 			pHs->close();
 
-			m_pController->removeSocket(pHs);
-			itHs = m_lHandshakes.erase(itHs);
+			m_pController->removeSocket( pHs );
+			itHs = m_lHandshakes.erase( itHs );
 
 			delete pHs;
 		}

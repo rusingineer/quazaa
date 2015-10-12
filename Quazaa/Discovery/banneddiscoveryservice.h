@@ -6,16 +6,19 @@
 namespace Discovery
 {
 
-class CBannedDiscoveryService : public CDiscoveryService
+class BannedDiscoveryService : public DiscoveryService
 {
 	Q_OBJECT
 
 public:
-	CBannedDiscoveryService(const QUrl& oURL, const CNetworkType& oNType, quint8 nRating);
+	BannedDiscoveryService( const QUrl& oURL, const NetworkType& oNType, quint8 nRating );
 
-	~CBannedDiscoveryService();
+	~BannedDiscoveryService();
 
-	inline QString type() const { return QString( "Banned" ); }
+	inline QString type() const
+	{
+		return QString( "Banned" );
+	}
 
 private:
 	void doQuery()  throw();

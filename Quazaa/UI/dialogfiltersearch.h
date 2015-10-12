@@ -27,31 +27,47 @@
 
 #include <QDialog>
 
+#include "searchfilter.h"
+
 namespace Ui
 {
-	class CDialogFilterSearch;
+class DialogFilterSearch;
 }
 
-class CDialogFilterSearch : public QDialog
+class DialogFilterSearch : public QDialog
 {
 	Q_OBJECT
-public:
-	CDialogFilterSearch(QWidget* parent = 0);
-	~CDialogFilterSearch();
-
-protected:
-	void changeEvent(QEvent* e);
 
 private:
-	Ui::CDialogFilterSearch* ui;
+	Ui::DialogFilterSearch*          ui;
+	SearchFilter::FilterControlData& m_rFilterData;
+	SearchFilter::FilterControlData  m_oWorkingData;
+
+	SearchFilter::SavedFilters*      m_pFilters;
+	QString                          m_sSelection;
+
+public:
+	DialogFilterSearch( SearchFilter::FilterControlData& rData, QWidget* parent );
+	~DialogFilterSearch();
+
+protected:
+	void changeEvent( QEvent* e );
+
+private:
+	void updateGUIFromData();
+	void updateDataFromGUI();
 
 signals:
-	void closed();
+	void filterClicked();
 
 private slots:
 	void on_pushButtonFilter_clicked();
 	void on_pushButtonCancel_clicked();
 	void setSkin();
+
+	void on_pushButtonSave_clicked();
+	void on_pushButtonDelete_clicked();
+	void on_comboBoxFilters_currentIndexChanged( int n = 0 );
 };
 
 #endif // DIALOGFILTERSEARCH_H

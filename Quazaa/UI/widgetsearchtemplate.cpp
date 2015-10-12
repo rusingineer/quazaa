@@ -42,20 +42,21 @@
 #include <QUrl>
 #include <QInputDialog>
 
-CWidgetSearchTemplate::CWidgetSearchTemplate(QString searchString, QWidget* parent) :
-	QWidget(parent),
-	ui(new Ui::CWidgetSearchTemplate)
+WidgetSearchTemplate::WidgetSearchTemplate( QString searchString, QWidget* parent ) :
+	QWidget( parent ),
+	ui( new Ui::WidgetSearchTemplate )
 {
-	ui->setupUi(this);
-	searchMenu = new QMenu(this);
-	searchMenu->addAction(ui->actionDownload);
+	ui->setupUi( this );
+
+	searchMenu = new QMenu( this );
+	searchMenu->addAction( ui->actionDownload );
 	searchMenu->addSeparator();
-	searchMenu->addAction(ui->actionBanNode);
-	searchMenu->addAction(ui->actionMarkAsJunk);
-	searchMenu->addAction(ui->actionClearResults);
+	searchMenu->addAction( ui->actionBanNode );
+	searchMenu->addAction( ui->actionMarkAsJunk );
+	searchMenu->addAction( ui->actionClearResults );
 	searchMenu->addSeparator();
-	searchMenu->addAction(ui->actionViewReviews);
-	searchMenu->addAction(ui->actionVirusTotalCheck);
+	searchMenu->addAction( ui->actionViewReviews );
+	searchMenu->addAction( ui->actionVirusTotalCheck );
 
 	m_sSearchString = searchString;
 	m_pSearch = 0;
@@ -63,245 +64,326 @@ CWidgetSearchTemplate::CWidgetSearchTemplate(QString searchString, QWidget* pare
 	m_nHits = 0;
 	m_nHubs = 0;
 	m_nLeaves = 0;
-	m_searchState = SearchState::Default;
-	m_pSortModel = new QSortFilterProxyModel(this);
+	m_eSearchState = SearchState::Default;
+
 	m_pSearchModel = new SearchTreeModel();
-	m_pSortModel->setSourceModel(m_pSearchModel);
-	ui->treeViewSearchResults->setModel(m_pSortModel);
-	m_pSortModel->setDynamicSortFilter(false);
-	connect(m_pSearchModel, SIGNAL(sort()), this, SLOT(Sort()));
-	connect(m_pSearchModel, SIGNAL(updateStats()), this, SLOT(OnStatsUpdated()));
+
+	m_pSortModel = new SearchSortFilterProxyModel( this );
+	m_pSortModel->setSourceModel( m_pSearchModel );
+	ui->treeViewSearchResults->setModel( m_pSortModel );
+
+	connect( m_pSearchModel, &SearchTreeModel::sort,
+			 this, &WidgetSearchTemplate::sort );
+	connect( m_pSearchModel, &SearchTreeModel::updateStats,
+			 this, &WidgetSearchTemplate::onStatsUpdated );
+	connect( m_pSearchModel, &SearchTreeModel::filterVisibilityUpdated,
+			 m_pSortModel, &SearchSortFilterProxyModel::refreshFilter );
+
 	loadHeaderState();
-	connect(ui->treeViewSearchResults->header(), SIGNAL(sectionMoved(int,int,int)), this, SLOT(saveHeaderState()));
-	connect(ui->treeViewSearchResults->header(), SIGNAL(sectionResized(int,int,int)), this, SLOT(saveHeaderState()));
-	connect(ui->treeViewSearchResults->header(), SIGNAL(sectionClicked(int)), this, SLOT(saveHeaderState()));
+	connect( ui->treeViewSearchResults->header(), SIGNAL( sectionMoved( int, int, int ) ),
+			 this, SLOT( saveHeaderState() ) );
+	connect( ui->treeViewSearchResults->header(), SIGNAL( sectionResized( int, int, int ) ),
+			 this, SLOT( saveHeaderState() ) );
+	connect( ui->treeViewSearchResults->header(), SIGNAL( sectionClicked( int ) ),
+			 this, SLOT( saveHeaderState() ) );
+
 	setSkin();
 }
 
-CWidgetSearchTemplate::~CWidgetSearchTemplate()
+WidgetSearchTemplate::~WidgetSearchTemplate()
 {
-	if(m_pSearch != 0)
+	if ( m_pSearch )
 	{
-		StopSearch();
+		stopSearch();
 	}
 
 	delete m_pSearchModel;
 	delete ui;
 }
 
-void CWidgetSearchTemplate::changeEvent(QEvent* e)
+void WidgetSearchTemplate::changeEvent( QEvent* e )
 {
-	QWidget::changeEvent(e);
-	switch(e->type())
+	QWidget::changeEvent( e );
+
+	switch ( e->type() )
 	{
-		case QEvent::LanguageChange:
-			ui->retranslateUi(this);
-			break;
-		default:
-			break;
+	case QEvent::LanguageChange:
+		ui->retranslateUi( this );
+		break;
+
+	default:
+		break;
 	}
 }
 
-void CWidgetSearchTemplate::StartSearch(CQuery* pQuery)
+/**
+ * @brief WidgetSearchTemplate::getHash allows acces to the first hash of the currently
+ * selected item
+ * @return A pointer to the hash or NULL if the hash does not exist.
+ */
+const Hash* const WidgetSearchTemplate::getHash() const
+{
+	const SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex( currentItem() );
+
+	const Hash* pReturnValue = NULL;
+
+	if ( itemSearch )
+	{
+		if ( itemSearch->type() == SearchTreeItem::SearchFileType )
+		{
+			SearchFile* pFile = ( SearchFile* )itemSearch;
+
+			Q_ASSERT( !pFile->m_vHashes.empty() );
+			pReturnValue = pFile->m_vHashes.mostImportant();
+		}
+		else if ( itemSearch->type() == SearchTreeItem::SearchHitType )
+		{
+			Q_ASSERT( false ); // top level node should be a SearchFile
+
+			SearchHit* pHit = ( SearchHit* )itemSearch;
+
+			Q_ASSERT( !pHit->m_oHitData.pQueryHit->m_vHashes.empty() );
+			pReturnValue = pHit->m_oHitData.pQueryHit->m_vHashes.mostImportant();
+		}
+	}
+
+	return pReturnValue;
+}
+
+void WidgetSearchTemplate::startSearch( Query* pQuery )
 {
 	if ( m_pSearch && m_pSearch->m_pQuery != pQuery )
 	{
 		delete m_pSearch;
-		m_pSearch = 0;
+		m_pSearch = NULL;
 	}
 
 	if ( !m_pSearch )
 	{
-		m_pSearch = new CManagedSearch( pQuery );
-		connect( m_pSearch, SIGNAL( OnHit( QueryHitSharedPtr) ), m_pSearchModel, SLOT( addQueryHit( QueryHitSharedPtr ) ) );
-		connect( m_pSearch, SIGNAL( StatsUpdated() ), this, SLOT( OnStatsUpdated() ) );
-		connect( m_pSearch, SIGNAL( StateChanged() ), this, SLOT( OnStateChanged() ) );
+		m_pSearch = new ManagedSearch( pQuery );
+		connect( m_pSearch, &ManagedSearch::onHit,
+				 m_pSearchModel, &SearchTreeModel::addQueryHit );
+		connect( m_pSearch, &ManagedSearch::statsUpdated,
+				 this, &WidgetSearchTemplate::onStatsUpdated );
+		connect( m_pSearch, &ManagedSearch::stateChanged,
+				 this, &WidgetSearchTemplate::onStateChanged );
 	}
 
-	m_searchState = SearchState::Searching;
+	m_eSearchState = SearchState::Searching;
 	m_pSearch->start();
 	m_sSearchString = m_pSearch->m_pQuery->descriptiveName();
 }
 
-void CWidgetSearchTemplate::StopSearch()
+void WidgetSearchTemplate::stopSearch()
 {
-	Q_ASSERT(m_pSearch != 0);
+	Q_ASSERT( m_pSearch );
 
-	m_searchState = SearchState::Stopped;
+	m_eSearchState = SearchState::Stopped;
 	m_pSearch->stop();
 	delete m_pSearch;
-	m_pSearch = 0;
+	m_pSearch = NULL;
 }
 
-void CWidgetSearchTemplate::PauseSearch()
+void WidgetSearchTemplate::pauseSearch()
 {
-	Q_ASSERT(m_pSearch != 0);
+	Q_ASSERT( m_pSearch );
 
-	m_searchState = SearchState::Paused;
+	m_eSearchState = SearchState::Paused;
 	m_pSearch->pause();
 }
 
-void CWidgetSearchTemplate::ClearSearch()
+void WidgetSearchTemplate::clearSearch()
 {
 	//qDebug() << "Clear search captured in widget search template.";
-		m_searchState = SearchState::Default;
+	m_eSearchState = SearchState::Default;
 	m_pSearchModel->clear();
 	qApp->processEvents();
 }
 
-void CWidgetSearchTemplate::OnStatsUpdated()
+void WidgetSearchTemplate::onStatsUpdated()
 {
-	m_nFiles = m_pSearchModel->nFileCount;
-	if(m_pSearch)
+	m_nFiles = m_pSearchModel->fileCount();
+
+	if ( m_pSearch )
 	{
 		m_nHits = m_pSearch->m_nHits;
 		m_nHubs = m_pSearch->m_nHubs;
 		m_nLeaves = m_pSearch->m_nLeaves;
 	}
-	emit statsUpdated(this);
+	emit statsUpdated( this );
 }
 
-QModelIndex CWidgetSearchTemplate::CurrentItem()
+QModelIndex WidgetSearchTemplate::currentItem() const
 {
 	QModelIndex idx = ui->treeViewSearchResults->currentIndex();
-	const QSortFilterProxyModel* pModel = static_cast<const QSortFilterProxyModel*>(idx.model());
-	return pModel->mapToSource(idx);
+	const QSortFilterProxyModel* pModel = static_cast<const QSortFilterProxyModel*>( idx.model() );
+	return pModel->mapToSource( idx );
 }
 
-void CWidgetSearchTemplate::OnStateChanged()
+/**
+ * @brief WidgetSearchTemplate::filter updetes the search filter data and filters the displayed
+ * results.
+ * @param rData The new search filter data.
+ */
+void WidgetSearchTemplate::filter( const SearchFilter::FilterControlData& rData )
 {
-	if( m_pSearch )
+	m_pSearchModel->updateFilter( rData );
+}
+
+SearchFilter::FilterControlData* WidgetSearchTemplate::getFilterDataCopy() const
+{
+	return m_pSearchModel->getFilterControlDataCopy();
+}
+
+void WidgetSearchTemplate::onStateChanged()
+{
+	if ( m_pSearch )
 	{
-		if( m_pSearch->m_bPaused )
+		if ( m_pSearch->m_bPaused )
 		{
-			m_searchState = SearchState::Paused;
+			m_eSearchState = SearchState::Paused;
 		}
-		else if( m_pSearch->m_bActive && !m_pSearch->m_bPaused )
+		else if ( m_pSearch->m_bActive && !m_pSearch->m_bPaused )
 		{
-			m_searchState = SearchState::Searching;
+			m_eSearchState = SearchState::Searching;
 		}
 		else
 		{
-			m_searchState = SearchState::Stopped;
+			m_eSearchState = SearchState::Stopped;
 		}
 	}
 	else
 	{
-				m_searchState = SearchState::Stopped;
+		m_eSearchState = SearchState::Stopped;
 	}
 
 	emit stateChanged();
 }
 
-void CWidgetSearchTemplate::Sort()
+void WidgetSearchTemplate::sort()
 {
-	m_pSortModel->sort(m_pSortModel->sortColumn(), m_pSortModel->sortOrder());
+	m_pSortModel->sort( m_pSortModel->sortColumn(), m_pSortModel->sortOrder() );
 }
 
-void CWidgetSearchTemplate::saveHeaderState()
+void WidgetSearchTemplate::saveHeaderState()
 {
 	quazaaSettings.WinMain.SearchHeader = ui->treeViewSearchResults->header()->saveState();
 }
 
-void CWidgetSearchTemplate::loadHeaderState()
+void WidgetSearchTemplate::loadHeaderState()
 {
-	ui->treeViewSearchResults->header()->restoreState(quazaaSettings.WinMain.SearchHeader);
+	ui->treeViewSearchResults->header()->restoreState( quazaaSettings.WinMain.SearchHeader );
 }
 
 
-void CWidgetSearchTemplate::on_treeViewSearchResults_doubleClicked(const QModelIndex &index)
+void WidgetSearchTemplate::on_treeViewSearchResults_doubleClicked( const QModelIndex& index )
 {
-	Q_UNUSED(index);
-	SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex(CurrentItem());
+	Q_UNUSED( index );
+	const SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex( currentItem() );
 
-	if( itemSearch != NULL )
+	if ( itemSearch )
 	{
-		CQueryHit* pHits = 0;
-		CQueryHit* pLast = 0;
+		QueryHit* pHits = NULL;
+		QueryHit* pLast = NULL;
 
-		for(int i = 0; i < itemSearch->childCount(); ++i)
+		for ( int i = 0; i < itemSearch->childCount(); ++i )
 		{
-			if( pLast )
+			if ( pLast )
 			{
-				pLast->m_pNext = new CQueryHit(itemSearch->child(i)->HitData.pQueryHit.data());
+				pLast->m_pNext = new QueryHit( itemSearch->child( i )->m_oHitData.pQueryHit.data() );
 				pLast = pLast->m_pNext;
 			}
 			else
 			{
-				pHits = new CQueryHit(itemSearch->child(i)->HitData.pQueryHit.data());
+				pHits = new QueryHit( itemSearch->child( i )->m_oHitData.pQueryHit.data() );
 				pLast = pHits;
 			}
 		}
 
-		Downloads.m_pSection.lock();
-		Downloads.add(pHits);
-		Downloads.m_pSection.unlock();
+		downloads.m_pSection.lock();
+		downloads.add( pHits );
+		downloads.m_pSection.unlock();
 
 		delete pHits;
 	}
 }
 
-void CWidgetSearchTemplate::on_treeViewSearchResults_customContextMenuRequested(const QPoint &pos)
+void WidgetSearchTemplate::on_treeViewSearchResults_customContextMenuRequested( const QPoint& pos )
 {
-	QModelIndex currIndex = ui->treeViewSearchResults->indexAt(pos);
-	if( currIndex.isValid() )
+	QModelIndex currIndex = ui->treeViewSearchResults->indexAt( pos );
+	if ( currIndex.isValid() )
 	{
-		if(m_pSearchModel->parent(CurrentItem()).isValid())
-			ui->actionBanNode->setVisible(true);
+		if ( m_pSearchModel->parent( currentItem() ).isValid() )
+		{
+			ui->actionBanNode->setVisible( true );
+		}
 		else
-			ui->actionBanNode->setVisible(false);
+		{
+			ui->actionBanNode->setVisible( false );
+		}
 
-		searchMenu->exec(QCursor::pos());
+		searchMenu->exec( QCursor::pos() );
 	}
 }
 
-void CWidgetSearchTemplate::on_actionDownload_triggered()
+void WidgetSearchTemplate::on_actionDownload_triggered()
 {
-	SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex(CurrentItem());
+	const SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex( currentItem() );
 
-	if( itemSearch != NULL )
+	if ( itemSearch )
 	{
-		on_treeViewSearchResults_doubleClicked(CurrentItem());
+		on_treeViewSearchResults_doubleClicked( currentItem() );
 	}
 }
 
-void CWidgetSearchTemplate::on_actionViewReviews_triggered()
+void WidgetSearchTemplate::on_actionViewReviews_triggered()
 {
-	SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex(CurrentItem());
+	const Hash* pHash = getHash();
 
-	if( itemSearch != NULL )
+	if ( pHash )
 	{
-		QDesktopServices::openUrl( QUrl(QString("http://bitzi.com/lookup/%1?v=detail&ref=quazaa").arg(itemSearch->HitData.lHashes.at(0).toString()), QUrl::TolerantMode) );
+		QString hashString = pHash->toString();
+		QString sURL = QString( "http://bitzi.com/lookup/%1?v=detail&ref=quazaa"
+							  ).arg( hashString );
+		QDesktopServices::openUrl( QUrl( sURL, QUrl::TolerantMode ) );
 	}
 }
 
-void CWidgetSearchTemplate::on_actionVirusTotalCheck_triggered()
+void WidgetSearchTemplate::on_actionVirusTotalCheck_triggered()
 {
-	SearchTreeItem* itemSearch = m_pSearchModel->topLevelItemFromIndex(CurrentItem());
+	const Hash* pHash = getHash();
 
-	if( itemSearch != NULL )
+	if ( pHash )
 	{
-		QDesktopServices::openUrl( QUrl(QString("www.virustotal.com/latest-report.html?resource=%1").arg(QString(itemSearch->HitData.lHashes.at(0).rawValue().toHex())), QUrl::TolerantMode) );
+		QString hashString = QString( getHash()->rawValue().toHex() );
+		QString sURL =  QString( "www.virustotal.com/latest-report.html?resource=%1"
+							   ).arg( hashString );
+		QDesktopServices::openUrl( QUrl( sURL , QUrl::TolerantMode ) );
 	}
 }
 
-void CWidgetSearchTemplate::setSkin()
+void WidgetSearchTemplate::setSkin()
 {
-	ui->treeViewSearchResults->setStyleSheet(skinSettings.listViews);
+	ui->treeViewSearchResults->setStyleSheet( skinSettings.listViews );
 }
 
-void CWidgetSearchTemplate::on_actionBanNode_triggered()
+void WidgetSearchTemplate::on_actionBanNode_triggered()
 {
-	SearchTreeItem* itemSearch = m_pSearchModel->itemFromIndex(CurrentItem());
+	SearchTreeItem* itemSearch = m_pSearchModel->itemFromIndex( currentItem() );
 
-	if( itemSearch != NULL )
+	if ( itemSearch )
 	{
 		bool ok;
-		QString reason = QInputDialog::getText(this, tr("Ban Reason"), tr("Please enter a ban reason."), QLineEdit::Normal, "", &ok);
-		if(ok && !reason.isEmpty()) {
-			CEndPoint address = itemSearch->HitData.pQueryHit.data()->m_pHitInfo.data()->m_oNodeAddress;
-			securityManager.ban(address, RuleTime::Special, false, reason, false, true);
-			m_pSearchModel->removeQueryHit(CurrentItem().row(), m_pSearchModel->parent(CurrentItem()));
+		QString reason = QInputDialog::getText( this, tr( "Ban Reason" ),
+												tr( "Please enter a ban reason." ),
+												QLineEdit::Normal, "", &ok );
+		if ( ok && !reason.isEmpty() )
+		{
+			EndPoint address =
+				itemSearch->m_oHitData.pQueryHit.data()->m_pHitInfo.data()->m_oNodeAddress;
+			securityManager.ban( address, Security::RuleTime::SixMonths, true, reason, false );
+			m_pSearchModel->removeQueryHit( currentItem().row(),
+											m_pSearchModel->parent( currentItem() ) );
 		}
 	}
 }

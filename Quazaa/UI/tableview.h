@@ -6,11 +6,11 @@
 class CTableView : public QTableView
 {
 public:
-	CTableView();
+	CTableView( QWidget* parent = NULL );
 
 protected:
 	// This overwrites certain key events...
-	virtual void keyPressEvent(QKeyEvent *event);
+	virtual void keyPressEvent( QKeyEvent* event );
 };
 
 #endif // TABLEVIEW_H

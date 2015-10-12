@@ -8,45 +8,41 @@
 
 using namespace URI;
 
-CMagnet::MagnetFile::MagnetFile() :
+Magnet::MagnetFile::MagnetFile() :
 	m_bNull( true ),
 	m_nFileSize( 0 )
 {}
 
-CMagnet::MagnetFile::~MagnetFile()
+Magnet::MagnetFile::~MagnetFile()
 {
-	foreach( CHash* pHash, m_lHashes )
-	{
-		delete pHash;
-	}
 }
 
-bool CMagnet::MagnetFile::isValid() const
+bool Magnet::MagnetFile::isValid() const
 {
-	return m_lHashes.size() || m_lURLs.size();
+	return !m_vHashes.empty() || m_lURLs.size();
 }
 
-CMagnet::CMagnet() :
+Magnet::Magnet() :
 	m_bNull( true )
 {}
 
-CMagnet::CMagnet(QString sMagnet) :
+Magnet::Magnet( QString sMagnet ) :
 	m_bNull( false )
 {
 	parseMagnet( sMagnet );
 }
 
-CMagnet::MagnetFile CMagnet::operator[](const quint16 nID) const
+Magnet::MagnetFile Magnet::operator[]( const quint16 nID ) const
 {
 	return m_lFiles[nID];
 }
 
-bool CMagnet::parseMagnet(QString sMagnet)
+bool Magnet::parseMagnet( QString sMagnet )
 {
-	m_bNull = false;
-
 	if ( !sMagnet.startsWith( "magnet:?" ) )
+	{
 		return false;
+	}
 
 	m_sMagnet = sMagnet;
 	m_lFiles.clear();
@@ -73,7 +69,7 @@ bool CMagnet::parseMagnet(QString sMagnet)
 		if ( pos2 == -1 )
 		{
 			QString sub = QObject::tr( "Subsection: %1" ).arg( sSubsection );
-			systemLog.postLog( LogSeverity::Error, QObject::tr("Error while parsing subsection of Magnet Link:") );
+			systemLog.postLog( LogSeverity::Error, QObject::tr( "Error while parsing subsection of Magnet Link:" ) );
 			systemLog.postLog( LogSeverity::Error, m_sMagnet );
 			systemLog.postLog( LogSeverity::Error, sub );
 			continue;
@@ -82,9 +78,9 @@ bool CMagnet::parseMagnet(QString sMagnet)
 		sParam = sSubsection.left( pos2 );            // get parameter type string
 		sSubsection.remove( 0, sParam.length() + 1 ); // isolate current subsection content
 
-		if ( ( sParam.length() == 2 || sParam.length() > 3 ) &&
+		if ( sParam.length() == 2 || ( sParam.length() > 3 &&
 			 ( sParam[2] == '.' ||     // covers multi file magnets
-			   sParam[1] == '.'    ) ) // covers experimental sections starting with "x."
+			   sParam[1] == '.' ) ) )  // covers experimental sections starting with "x."
 		{
 			// Determine ID the current file.
 			if ( sParam.length() == 2 )
@@ -101,6 +97,13 @@ bool CMagnet::parseMagnet(QString sMagnet)
 					subsectionError( sParam, sSubsection );
 					continue;
 				}
+			}
+			else if ( sParam.startsWith( "x." ) ) // Experimental stuff
+			{
+				QString sub = QObject::tr( "Experimental Subsection: %1=%2" ).arg( sParam, sSubsection );
+				systemLog.postLog( LogSeverity::Error, QObject::tr( "Detected unsupported experimental subsection in Magnet Link:" ) );
+				systemLog.postLog( LogSeverity::Error, m_sMagnet );
+				systemLog.postLog( LogSeverity::Error, sub );
 			}
 			else
 			{
@@ -129,16 +132,24 @@ bool CMagnet::parseMagnet(QString sMagnet)
 			}
 			else if ( sParam.startsWith( "xt" ) )	// EXect Topic
 			{
-				CHash* pHash = CHash::fromURN( sSubsection );
+				Hash* pHash = Hash::fromURN( sSubsection );
 
 				if ( pHash )
 				{
-					mFiles[nFileNo].m_lHashes.append( pHash );
+					if ( !mFiles[nFileNo].m_vHashes.insert( pHash ) )
+					{
+						systemLog.postLog( LogSeverity::Error, QObject::tr( "Detected and ignored conflicting hash within Magnet Link:" ) );
+						systemLog.postLog( LogSeverity::Error, m_sMagnet );
+					}
+					else
+					{
+						m_bNull = false;
+					}
 				}
 				else
 				{
 					QString sub = QObject::tr( "Hash URN: %1" ).arg( sSubsection );
-					systemLog.postLog( LogSeverity::Error, QObject::tr("Detected unknown hash type within Magnet Link:") );
+					systemLog.postLog( LogSeverity::Error, QObject::tr( "Detected and ignored unknown hash type within Magnet Link:" ) );
 					systemLog.postLog( LogSeverity::Error, m_sMagnet );
 					systemLog.postLog( LogSeverity::Error, sub );
 
@@ -154,6 +165,7 @@ bool CMagnet::parseMagnet(QString sMagnet)
 				{
 					url.m_nPriority = sParam.startsWith( "xs" ) ? 128 : 0;
 					mFiles[nFileNo].m_lURLs.append( url );
+					m_bNull = false;
 				}
 				else
 				{
@@ -164,11 +176,13 @@ bool CMagnet::parseMagnet(QString sMagnet)
 			else if ( sParam.startsWith( "kt" ) )
 			{
 				mSearches[nFileNo] = sSubsection;
+				m_bNull = false;
 			}
 			else if ( sParam.startsWith( "mt" ) )
 			{
 				QString sub = QObject::tr( "Manifest Topic: %1=%2" ).arg( sParam, sSubsection );
-				systemLog.postLog( LogSeverity::Error, QObject::tr("Detected unsupported \"Manifest Topic\" section in Magnet Link:") );
+				systemLog.postLog( LogSeverity::Error,
+								   QObject::tr( "Detected unsupported \"Manifest Topic\" section in Magnet Link:" ) );
 				systemLog.postLog( LogSeverity::Error, m_sMagnet );
 				systemLog.postLog( LogSeverity::Error, sub );
 			}
@@ -186,17 +200,10 @@ bool CMagnet::parseMagnet(QString sMagnet)
 					continue;
 				}
 			}
-			else if ( sParam.startsWith( "x." ) ) // Experimental stuff
-			{
-				QString sub = QObject::tr( "Experimental Subsection: %1=%2" ).arg( sParam, sSubsection );
-				systemLog.postLog( LogSeverity::Error, QObject::tr("Detected unsupported experimental subsection in Magnet Link:") );
-				systemLog.postLog( LogSeverity::Error, m_sMagnet );
-				systemLog.postLog( LogSeverity::Error, sub );
-			}
 			else
 			{
 				QString sub = QObject::tr( "Subsection: %1=%2" ).arg( sParam, sSubsection );
-				systemLog.postLog( LogSeverity::Error, QObject::tr("Detected unknown type of subsection within Magnet Link:") );
+				systemLog.postLog( LogSeverity::Error, QObject::tr( "Detected unknown type of subsection within Magnet Link:" ) );
 				systemLog.postLog( LogSeverity::Error, m_sMagnet );
 				systemLog.postLog( LogSeverity::Error, sub );
 			}
@@ -207,27 +214,36 @@ bool CMagnet::parseMagnet(QString sMagnet)
 		}
 	}
 
-	foreach ( MagnetFile oFile, mFiles )
+	if ( m_bNull ) // We got neither hashes, nor direct web sources, nor keywords to search for.
 	{
-		if ( oFile.isValid() )
+		m_sMagnet.clear();
+
+		m_lFiles.clear();
+		m_lSearches.clear();
+		return false;
+	}
+
+	for ( int i = 0, nSize = mFiles.size(); i < nSize; ++i )
+	{
+		if ( mFiles[i].isValid() )
 		{
-			oFile.m_bNull = false;
-			m_lFiles.push_back( oFile );
+			mFiles[i].m_bNull = false;
+			m_lFiles.push_back( mFiles[i] );
 		}
 	}
 
-	foreach ( QString sSearch, mSearches )
+	foreach ( const QString& sSearch, mSearches )
 	{
 		if ( !sSearch.trimmed().isEmpty() )
 		{
-			m_lSearches.push_back( sSearch );
+			m_lSearches.push_back( sSearch.trimmed() );
 		}
 	}
 
 	return m_lFiles.size() + m_lSearches.size();
 }
 
-bool CMagnet::file(const quint16 nID, CDownload* pDownload) const
+bool Magnet::file( const quint16 nID, Download* pDownload ) const
 {
 	if ( nID >= m_lFiles.size() )
 	{
@@ -236,7 +252,7 @@ bool CMagnet::file(const quint16 nID, CDownload* pDownload) const
 
 	if ( !pDownload )
 	{
-		pDownload = new CDownload();
+		pDownload = new Download();
 	}
 
 	MagnetFile file = operator[]( nID );
@@ -250,7 +266,7 @@ bool CMagnet::file(const quint16 nID, CDownload* pDownload) const
 	return true;
 }
 
-QString CMagnet::search(const quint16 nID) const
+QString Magnet::search( const quint16 nID ) const
 {
 	if ( nID >= m_lSearches.size() )
 	{
@@ -264,10 +280,10 @@ QString CMagnet::search(const quint16 nID) const
 }
 
 
-void CMagnet::subsectionError(QString sParam, QString sSubsection)
+void Magnet::subsectionError( QString sParam, QString sSubsection )
 {
 	QString sub = QObject::tr( "Subsection: %1=%2" ).arg( sParam, sSubsection );
-	systemLog.postLog( LogSeverity::Error, QObject::tr("Error while parsing subsection of Magnet Link:") );
+	systemLog.postLog( LogSeverity::Error, QObject::tr( "Error while parsing subsection of Magnet Link:" ) );
 	systemLog.postLog( LogSeverity::Error, m_sMagnet );
 	systemLog.postLog( LogSeverity::Error, sub );
 }

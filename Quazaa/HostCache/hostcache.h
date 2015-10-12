@@ -1,7 +1,7 @@
 /*
 ** hostcache.h
 **
-** Copyright © Quazaa Development Team, 2009-2013.
+** Copyright © Quazaa Development Team, 2013-2014.
 ** This file is part of QUAZAA (quazaa.sourceforge.net)
 **
 ** Quazaa is free software; this file may be used under the terms of the GNU
@@ -26,91 +26,171 @@
 #define HOSTCACHE_H
 
 #include <QMutex>
+#include <QThread>
+#include <QAtomicInt>
 
-#include "hostcachehost.h"
+#include "endpoint.h"
+#include "idprovider.h"
 
-// Increment this if there have been made changes to the way of storing Host Cache Hosts.
-#define HOST_CACHE_CODE_VERSION	6
-// History:
-// 4 - Initial implementation.
-// 6 - Fixed Hosts having an early date and changed time storage from QDateTime to quint32.
+// TODO: add mechanism to remove hosts and discovery services by their origin
 
-class QFile;
+class HostData;
 
-typedef QList<CHostCacheHost*>::iterator CHostCacheIterator;
-
-class CHostCache
+namespace HostManagement
 {
 
-public:
-	QList<CHostCacheHost*>  m_lHosts;
-	mutable QMutex          m_pSection;
-	quint32                 m_tLastSave;
+class HostCacheHost;
 
-	quint32                 m_nMaxCacheHosts;
-	QString                 m_sMessage;
+class HostCache : public QObject
+{
+	Q_OBJECT
 
 public:
-	CHostCache();
-	~CHostCache();
+	// Thread used by the Host Cache
+	QThread*            m_pHostCacheDiscoveryThread;
+	IDProvider<quint32> m_oIDProvider;
 
-	CHostCacheHost* add(CEndPoint host, const QDateTime& ts);
-	CHostCacheHost* add(CEndPoint host, quint32 tTimeStamp);
+protected:
+	mutable QMutex      m_pSection;
 
-	CHostCacheIterator find(CEndPoint oHost);
-	CHostCacheIterator find(CHostCacheHost* pHost);
-	inline CHostCacheHost* take(CEndPoint oHost);
-	inline CHostCacheHost* take(CHostCacheHost *pHost);
+	mutable quint32     m_tLastSave;
+	quint8              m_nMaxFailures;
+	QAtomicInt          m_nSizeAtomic;
+	QAtomicInt          m_nConnectablesAtomic;
 
-	CHostCacheHost* update(CEndPoint oHost, const quint32 tTimeStamp);
-	CHostCacheHost* update(CHostCacheHost* pHost, const quint32 tTimeStamp);
-	CHostCacheHost* update(CHostCacheIterator itHost, const quint32 tTimeStamp);
+public:
+	HostCache();
+	virtual ~HostCache();
 
-	void remove(CHostCacheHost* pRemove);
-	void remove(CEndPoint oHost);
+	/**
+	 * @brief lock locks the HostCache for synchronous access.
+	 */
+	void            lock();
 
-	void addXTry(QString& sHeader);
-	QString getXTry();
+	/**
+	 * @brief unlock unlocks the HostCache.
+	 */
+	void            unlock();
 
-	void onFailure(CEndPoint addr);
-	CHostCacheHost* get();
-	CHostCacheHost* getConnectable(const quint32 tNow = common::getTNowUTC(),
-	                               QList<CHostCacheHost*> oExcept = QList<CHostCacheHost*>(),
-	                               QString sCountry = QString("ZZ"));
+	/**
+	 * @brief start initializes the Host Cache.
+	 * <br><b>Locking: YES</b> (asynchronous)
+	 *
+	 * Make sure this is not called before QApplication is instantiated.
+	 * Any custom initializations should be made within asyncStartUpHelper().
+	 */
+	void            start();
 
-	bool save(const quint32 tNow);
-	void load();
+	/**
+	 * @brief stop prepares the Host Cache for deletion on application shutdown.
+	 * <br><b>Locking: YES</b>
+	 */
+	void            stop();
 
-	void pruneOldHosts(const quint32 tNow);
-	void pruneByQueryAck(const quint32 tNow);
+	/**
+	 * @brief registerMetaTypes registers the necessary meta types for signal and slot connections.
+	 * <br><b>Locking: /</b>
+	 */
+	void            registerMetaTypes();
 
-	static quint32 writeToFile(const void * const pManager, QFile& oFile);
+	/**
+	 * @brief hasConnectable allows to find out whether the cache currently holds connectable
+	 * HostCacheHosts.
+	 * <br><b>Locking: /</b>
+	 *
+	 * @return <code>true</code> if at least one connectable host is present;
+	 * <br><code>false<code> otherwise.
+	 */
+	bool            hasConnectable();
 
-	inline quint32 count();
-	inline bool isEmpty();
+	/**
+	 * @brief size allows access to the number of [HostCacheHosts](@ref HostCacheHost) in the Cache.
+	 * <br><b>Locking: /</b>
+	 *
+	 * @return the number of [HostCacheHosts](@ref HostCacheHost) in the cache.
+	 */
+	quint32         size() const;
+
+	/**
+	 * @brief isEmpty allows to check whether the Host Cache is empty.
+	 * <br><b>Locking: /</b>
+	 *
+	 * @return <code>true</code> if the cache contains no hosts;
+	 * <br><code>false<code> otherwise.
+	 */
+	bool            isEmpty() const;
+
+	/**
+	 * @brief onConnectSuccess informs the cache about a successful connection to a host that has
+	 * (possibly) been retrieved from the cache.
+	 * <br><b>Locking: YES</b> (asynchronous)
+	 *
+	 * @param rHost  The host that has been successfully connected to.
+	 */
+	virtual void    onConnectSuccess( const EndPoint& rHost ) = 0;
+
+signals:
+	/**
+	 * @brief hostAdded informs about a new Host having been added.
+	 * @param pHost  GUI data representing a HostCacheHost
+	 */
+	void            hostAdded( HostData* pHostData );
+
+	/**
+	 * @brief hostRemoved informs about a host having been removed.
+	 * @param pHost  QSharedPointer to a HostCacheHost
+	 */
+	void            hostRemoved( QSharedPointer<HostCacheHost> pHost );
+
+	/**
+	 * @brief hostInfo info signal to get informed about all hosts within the cache.
+	 * @see requestHostList()
+	 * @param pHost  GUI data representing a HostCacheHost
+	 */
+	void            hostInfo( HostData* pHost );
+
+	/**
+	 * @brief hostUpdated informs about a host having been updated.
+	 * @param nID  The GUI ID of the updated HostCacheHost
+	 */
+	void            hostUpdated( quint32 nID ); // may not be used by all subclass implementations
+
+	/**
+	 * @brief loadingFinished is emitted after new Hosts have been loaded.
+	 */
+	void            loadingFinished();
+
+	/**
+	 * @brief clearTriggered is emitted if the entire cache is cleared instead of emitting
+	 * hostRemoved() for each host.
+	 */
+	void            clearTriggered();
+
+private:
+	/**
+	 * @brief stopInternal prepares the Host Cache (sub classes) for deletion.
+	 * <br><b>Locking: REQUIRED</b>
+	 */
+	virtual void    stopInternal() = 0;
+
+	/**
+	 * @brief registerMetaTypesInternal handles registering the necessary meta types of child
+	 * classes.
+	 * <br><b>Locking: /</b>
+	 */
+	virtual void    registerMetaTypesInternal() = 0;
+
+private slots:
+	/**
+	 * @brief asyncStartUpHelper is a private helper method for start().
+	 * <br><b>Locking: YES</b>
+	 *
+	 * It contains among other things the signal/slot connections specific to the respective host
+	 * cache.
+	 */
+	virtual void    startUpInternal() = 0;
 };
 
-CHostCacheHost* CHostCache::take(CEndPoint oHost)
-{
-	CHostCacheIterator it = find( oHost );
-	return it == m_lHosts.end() ? NULL : *it;
-}
-CHostCacheHost* CHostCache::take(CHostCacheHost *pHost)
-{
-	CHostCacheIterator it = find( pHost );
-	return it == m_lHosts.end() ? NULL : *it;
-}
-
-quint32 CHostCache::count()
-{
-	return m_lHosts.size();
-}
-
-bool CHostCache::isEmpty()
-{
-	return !count();
-}
-
-extern CHostCache hostCache;
+} // namespace HostManagement
 
 #endif // HOSTCACHE_H

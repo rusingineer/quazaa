@@ -1,7 +1,7 @@
 /*
 ** hostcachehost.cpp
 **
-** Copyright © Quazaa Development Team, 2009-2013.
+** Copyright © Quazaa Development Team, 2013-2013.
 ** This file is part of QUAZAA (quazaa.sourceforge.net)
 **
 ** Quazaa is free software; this file may be used under the terms of the GNU
@@ -23,69 +23,203 @@
 */
 
 #include "hostcachehost.h"
+#include "g2hostcachehost.h"
 
-template<>
-class qLess <CHostCacheHost*>
+#include "Misc/networkiconprovider.h"
+
+#include "hostcachetablemodel.h"
+
+using namespace HostManagement;
+
+//IDProvider<quint32> HostCacheHost::m_oIDProvider;
+bool                HostCacheHost::m_bShutDownFlag = false;
+
+HostCacheHost::HostCacheHost( const EndPoint& oAddress, quint8 nFailures, quint32 tTimestamp,
+							  quint32 tLastConnect, SourceID nOwnID, SourceID nSourceID ) :
+	m_nType( DiscoveryProtocol::None ),
+	m_oAddress(     oAddress         ),
+	m_tTimeStamp(   tTimestamp       ),
+	m_nOwnID(       nOwnID           ),
+	m_nSourceID(    nSourceID        ),
+	m_tLastConnect( tLastConnect     ),
+	m_tLastConnectionEstablished( 1  ), // TODO: fill with data
+	m_nFailures(    nFailures        ),
+	m_bConnectable( false            )
 {
-public:
-	inline bool operator()(const CHostCacheHost* l, const CHostCacheHost* r) const
-	{
-		return l->m_tTimestamp > r->m_tTimestamp;
-	}
-};
+//	m_nID = m_oIDProvider.aquire();
+	Q_ASSERT( nOwnID ); // each host must have a valid own ID
+}
 
-CHostCacheHost::CHostCacheHost(CEndPoint oAddress, quint32 tTimestamp) :
-	m_oAddress( oAddress ),
-	m_tTimestamp( tTimestamp ),
-	m_nQueryKey(    0 ),
-	m_nKeyHost( CEndPoint() ),
-	m_nKeyTime(     0 ),
-	m_tAck(         0 ),
-	m_tLastQuery(   0 ),
-	m_tRetryAfter(  0 ),
-	m_tLastConnect( 0 ),
-	m_nFailures(    0 )
+HostCacheHost::~HostCacheHost()
+{
+	if ( !m_bShutDownFlag )
+	{
+//		m_oIDProvider.release( m_nID );
+	}
+}
+
+HostCacheHost* HostCacheHost::load( QDataStream& fsFile, quint32 tNow )
+{
+	quint8   nType;
+	EndPoint oAddress;
+	quint8   nFailures;
+	quint32  tTimeStamp;
+	quint32  tLastConnect;
+	quint32  nOwnID;
+	quint32  nParentID;
+
+	fsFile >> nType;
+	fsFile >> oAddress;
+	fsFile >> nFailures;
+	fsFile >> tTimeStamp;
+	fsFile >> tLastConnect;
+	fsFile >> nOwnID;
+	fsFile >> nParentID;
+
+	if ( tTimeStamp > tNow )
+	{
+		tTimeStamp = tNow - 60;
+	}
+
+	if ( tLastConnect > tNow )
+	{
+		tLastConnect = tNow - 60;
+	}
+
+	HostCacheHost* pReturn = NULL;
+
+	switch ( nType )
+	{
+	case DiscoveryProtocol::G2:
+		pReturn = new G2HostCacheHost( oAddress, tTimeStamp, nFailures, nOwnID, nParentID );
+		pReturn->setLastConnect( tLastConnect );
+		break;
+
+	default:
+		break;
+	}
+
+	return pReturn;
+}
+
+void HostCacheHost::save( QDataStream& fsFile )
+{
+	fsFile << ( quint8 )m_nType;
+	fsFile << m_oAddress;
+	fsFile << m_nFailures;
+	fsFile << m_tTimeStamp;
+	fsFile << m_tLastConnect;
+	fsFile << ( quint32 )m_nOwnID;
+	fsFile << ( quint32 )m_nSourceID;
+}
+
+HostData::HostData( SharedHostPtr pHost ) :
+	m_pHost(        pHost                ),
+	m_oAddress(     pHost->address()     ),
+	m_sAddress(     m_oAddress.toStringWithPort() ),
+	m_sCountryCode( m_oAddress.country() ),
+	m_sCountry(     geoIP.countryNameFromCode( m_sCountryCode ) ),
+	m_iCountry(     NetworkIconProvider::icon( m_sCountryCode ) ),
+//	m_nID(          pHost->id()          ),
+	m_tLastConnect( pHost->lastConnect() ),
+	m_sLastConnect( m_tLastConnect ? QDateTime::fromTime_t( m_tLastConnect ).toString() :
+									 QObject::tr( "never" ) ),
+	m_nFailures(    pHost->failures()    ),
+	m_sFailures(    QString::number( m_nFailures ) ),
+	m_nType(        pHost->type() )
 {
 }
 
-CHostCacheHost::~CHostCacheHost()
+/**
+ * @brief update refreshes the data within HostData if necessary.
+ * Locking: REQUIRES hostCache.m_pSection
+ * @param nRow : the row being refreshed
+ * @param nSortCol : the currently sorted column
+ * @param lToUpdate : the list of indexes that have changed
+ * @param pModel : the model
+ * @return true if an entry within the column col has been modified
+ */
+bool HostData::update( int nRow, int nSortCol, QModelIndexList& lToUpdate,
+					   HostCacheTableModel* pModel )
 {
+	Q_ASSERT( !m_pHost.isNull() );
+
+	bool bReturn = false;
+
+	// address and country never change
+	if ( m_tLastConnect != m_pHost->lastConnect() )
+	{
+		lToUpdate.append( pModel->index( nRow, HostCacheTableModel::LASTCONNECT ) );
+		m_tLastConnect = m_pHost->lastConnect();
+		m_sLastConnect = m_tLastConnect ? QDateTime::fromTime_t( m_tLastConnect ).toString()
+						 : QObject::tr( "never" );
+
+		if ( nSortCol == HostCacheTableModel::LASTCONNECT )
+		{
+			bReturn = true;
+		}
+	}
+
+	if ( m_nFailures != m_pHost->failures() )
+	{
+		lToUpdate.append( pModel->index( nRow, HostCacheTableModel::FAILURES ) );
+		m_nFailures = m_pHost->failures();
+		m_sFailures = QString::number( m_nFailures );
+
+		if ( nSortCol == HostCacheTableModel::FAILURES )
+		{
+			bReturn = true;
+		}
+	}
+
+	return bReturn;
 }
 
-bool CHostCacheHost::canQuery(const quint32 tNow)
+/**
+ * @brief RuleData::data
+ * @param col
+ * @return
+ */
+QVariant HostData::data( int col ) const
 {
-	Q_ASSERT( tNow );
-
-	if ( m_tAck && m_nQueryKey ) // if waiting for an ack, and we have a query key
+	switch ( col )
 	{
-		return false;
-	}
+	case HostCacheTableModel::ADDRESS:
+		return m_sAddress;
 
-	Q_ASSERT( tNow - m_tTimestamp >= 0 );
-	if ( tNow - m_tTimestamp > quazaaSettings.Gnutella2.HostCurrent ) // host is not too old
-	{
-		return false;
-	}
+	case HostCacheTableModel::LASTCONNECT:
+		return m_sLastConnect;
 
-	if ( m_tRetryAfter && tNow < m_tRetryAfter ) // honor retry-after
-	{
-		return false;
-	}
+	case HostCacheTableModel::FAILURES:
+		return m_sFailures;
 
-	if ( !m_tLastQuery ) // host not already queried
-	{
-		return true;
-	}
+	case HostCacheTableModel::COUNTRY:
+		return m_sCountry;
 
-	Q_ASSERT( tNow - m_tLastQuery > 0 );
-	return tNow - m_tLastQuery > quazaaSettings.Gnutella2.QueryHostThrottle;
+	default:
+		return QVariant();
+	}
 }
 
-void CHostCacheHost::setKey(quint32 nKey, const quint32 tNow, CEndPoint* pHost)
+bool HostData::lessThan( int col, const HostData* const pOther ) const
 {
-	m_tAck      = 0;
-	m_nFailures = 0;
-	m_nQueryKey = nKey;
-	m_nKeyTime  = tNow;
-	m_nKeyHost  = pHost ? *pHost : Network.getLocalAddress();
+	Q_ASSERT( pOther );
+
+	switch ( col )
+	{
+	case HostCacheTableModel::ADDRESS:
+		return m_sAddress     < pOther->m_sAddress;
+
+	case HostCacheTableModel::LASTCONNECT:
+		return m_tLastConnect < pOther->m_tLastConnect;
+
+	case HostCacheTableModel::FAILURES:
+		return m_nFailures    < pOther->m_nFailures;
+
+	case HostCacheTableModel::COUNTRY:
+		return m_sCountryCode < pOther->m_sCountryCode;
+
+	default:
+		return false;
+	}
 }

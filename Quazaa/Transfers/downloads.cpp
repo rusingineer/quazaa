@@ -34,77 +34,79 @@
 
 #include "debug_new.h"
 
-CDownloads Downloads;
+Downloads downloads;
 
-CDownloads::CDownloads(QObject *parent) :
-	QObject(parent)
+Downloads::Downloads( QObject* parent ) :
+	QObject( parent )
 {
-	qRegisterMetaType<CDownload*>("CDownload*");
-	qRegisterMetaType<CDownloadSource*>("CDownloadSource*");
-	qRegisterMetaType<CDownload::DownloadState>("CDownload::DownloadState");
+	qRegisterMetaType<Download*>( "Download*" );
+	qRegisterMetaType<DownloadSource*>( "DownloadSource*" );
+	qRegisterMetaType<Download::DownloadState>( "Download::DownloadState" );
 }
 
-void CDownloads::add(CQueryHit *pHit)
+void Downloads::add( QueryHit* pHit )
 {
-	ASSUME_LOCK( Downloads.m_pSection );
+	ASSUME_LOCK( downloads.m_pSection );
 
-	CDownload* pDownload = new CDownload( pHit );
-	pDownload->moveToThread( &TransfersThread );
+	Download* pDownload = new Download( pHit );
+	pDownload->moveToThread( &transfersThread );
 	m_lDownloads.append( pDownload );
 	pDownload->saveState();
-	systemLog.postLog( LogSeverity::Notice, Components::Downloads,
-	                   qPrintable( tr( "Queued download job for %s" ) ),
-	                   qPrintable( pDownload->m_sDisplayName ) );
+	systemLog.postLog( LogSeverity::Notice, Component::Downloads,
+					   qPrintable( tr( "Queued download job for %s" ) ),
+					   qPrintable( pDownload->m_sDisplayName ) );
 	emit downloadAdded( pDownload );
 }
 
-bool CDownloads::exists(CDownload *pDownload)
+bool Downloads::exists( Download* pDownload )
 {
-	return (m_lDownloads.indexOf(pDownload) != -1);
+	return ( m_lDownloads.indexOf( pDownload ) != -1 );
 }
 
-void CDownloads::start()
+void Downloads::start()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	QDir d(quazaaSettings.Downloads.IncompletePath);
+	QDir d( quazaaSettings.Downloads.IncompletePath );
 
-	if( !d.exists() )
-		d.mkpath(quazaaSettings.Downloads.IncompletePath);
-
-	if( d.isReadable() )
+	if ( !d.exists() )
 	{
-		QStringList files = d.entryList(QStringList() << "*.!qd");
+		d.mkpath( quazaaSettings.Downloads.IncompletePath );
+	}
 
-		foreach(QString f, files)
+	if ( d.isReadable() )
+	{
+		QStringList files = d.entryList( QStringList() << "*.!qd" );
+
+		foreach ( const QString & f, files )
 		{
-			QFile file(quazaaSettings.Downloads.IncompletePath + "/" + f);
+			QFile file( quazaaSettings.Downloads.IncompletePath + "/" + f );
 
-			if( file.exists() && file.open(QFile::ReadOnly) )
+			if ( file.exists() && file.open( QFile::ReadOnly ) )
 			{
-				CDownload* pDownload = new CDownload();
-				QDataStream stream(&file);
+				Download* pDownload = new Download();
+				QDataStream stream( &file );
 
 				stream >> *pDownload;
 
-				pDownload->moveToThread(&TransfersThread);
-				m_lDownloads.append(pDownload);
-				emit downloadAdded(pDownload);
-				systemLog.postLog( LogSeverity::Notice, Components::Downloads,
-				                   qPrintable( tr( "Loaded download: %s" ) ),
-				                   qPrintable( pDownload->m_sDisplayName ) );
+				pDownload->moveToThread( &transfersThread );
+				m_lDownloads.append( pDownload );
+				emit downloadAdded( pDownload );
+				systemLog.postLog( LogSeverity::Notice, Component::Downloads,
+								   qPrintable( tr( "Loaded download: %s" ) ),
+								   qPrintable( pDownload->m_sDisplayName ) );
 			}
 		}
 	}
 }
 
-void CDownloads::stop()
+void Downloads::stop()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	foreach( CDownload* pDownload, m_lDownloads )
+	foreach ( Download * pDownload, m_lDownloads )
 	{
-		if( pDownload->isModified() )
+		if ( pDownload->isModified() )
 		{
 			pDownload->saveState();
 		}
@@ -115,78 +117,81 @@ void CDownloads::stop()
 	m_lDownloads.clear();
 }
 
-void CDownloads::emitDownloads()
+void Downloads::emitDownloads()
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	foreach( CDownload* pDl, m_lDownloads )
+	foreach ( Download * pDl, m_lDownloads )
 	{
-		emit downloadAdded(pDl);
+		emit downloadAdded( pDl );
 	}
 }
 
-void CDownloads::onTimer()
+void Downloads::onTimer()
 {
-	if(m_lDownloads.isEmpty())
+	if ( m_lDownloads.isEmpty() )
+	{
 		return;
+	}
 
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
 	int nActive = 0, nQueued = 0, nTransfers = 0;
 
-	foreach(CDownload* pDownload, m_lDownloads)
+	foreach ( Download * pDownload, m_lDownloads )
 	{
-		switch(pDownload->m_nState)
+		switch ( pDownload->m_nState )
 		{
-			case CDownload::dsQueued:
-				nQueued++;
-				break;
-			case CDownload::dsPaused:
-				break;
-			case CDownload::dsPending:
-			case CDownload::dsSearching:
-			case CDownload::dsDownloading:
-				nActive++;
-				nTransfers += pDownload->transfersCount();
-				break;
-			case CDownload::dsVerifying:
-			case CDownload::dsMoving:
-			case CDownload::dsFileError:
-			case CDownload::dsCompleted:
-				break;
+		case Download::dsQueued:
+			nQueued++;
+			break;
+		case Download::dsPaused:
+			break;
+		case Download::dsPending:
+		case Download::dsSearching:
+		case Download::dsDownloading:
+			nActive++;
+			nTransfers += pDownload->transfersCount();
+			break;
+		case Download::dsVerifying:
+		case Download::dsMoving:
+		case Download::dsFileError:
+		case Download::dsCompleted:
+			break;
 
 		}
 	}
 
 	int nTransfersLeft = quazaaSettings.Downloads.MaxTransfers - nTransfers;
 
-	foreach(CDownload* pDownload, m_lDownloads)
+	foreach ( Download * pDownload, m_lDownloads )
 	{
-		if( pDownload->m_nState == CDownload::dsPending )
+		if ( pDownload->m_nState == Download::dsPending )
 		{
-			if( false /* starved? */ )
+			if ( false /* starved? */ )
 			{
 				// stop it
 			}
-			else if( pDownload->sourceCount() < quazaaSettings.Downloads.MinSources /* and not too early */)
+			else if ( pDownload->sourceCount() < quazaaSettings.Downloads.MinSources /* and not too early */ )
 			{
 				// run search
 			}
 		}
-		else if( pDownload->m_nState == CDownload::dsQueued )
+		else if ( pDownload->m_nState == Download::dsQueued )
 		{
-			if( nActive < quazaaSettings.Downloads.MaxFiles )
+			if ( nActive < quazaaSettings.Downloads.MaxFiles )
 			{
-				systemLog.postLog(LogSeverity::Information, QString(tr("Starting download: %1")).arg(pDownload->m_sDisplayName));
+				systemLog.postLog( LogSeverity::Information,
+								   QString( tr( "Starting download: %1" ) ).arg( pDownload->m_sDisplayName ) );
 				pDownload->start();
 				nActive++;
 			}
 		}
 
-		if( pDownload->canDownload() && nTransfersLeft > 0 )
+		if ( pDownload->canDownload() && nTransfersLeft > 0 )
 		{
-			int nAllow = qMin(3, (nTransfersLeft / (nActive + 1)));
-			nTransfersLeft -= pDownload->startTransfers(nAllow);
+			int nAllow = qMin( 3, ( nTransfersLeft / ( nActive + 1 ) ) );
+			nTransfersLeft -= pDownload->startTransfers( nAllow );
 		}
 	}
 }

@@ -1,7 +1,7 @@
 #
 # Quazaa.pro
 #
-# Copyright © Quazaaa Development Team, 2009-2013.
+# Copyright © Quazaaa Development Team, 2009-2014.
 # This file is part of QUAZAA (quazaa.sourceforge.net)
 #
 # Quazaa is free software; this file may be used under the terms of the GNU
@@ -29,11 +29,11 @@ QT_VER_MAJ = $$member(QT_VERSION, 0)
 QT_VER_MIN = $$member(QT_VERSION, 1)
 
 greaterThan(QT_VER_MAJ, 4) {
-		QT +=	widgets \
-				multimedia \
-				multimediawidgets \
-				network \
-				xml
+		QT += multimedia \
+			  multimediawidgets \
+			  network \
+			  widgets \
+			  xml
 }
 
 QT += network \
@@ -71,7 +71,6 @@ INCLUDEPATH += 3rdparty \
 		Misc \
 		Models \
 		NetworkCore \
-		Security \
 		ShareManager \
 		Skin \
 		Transfers \
@@ -79,6 +78,7 @@ INCLUDEPATH += 3rdparty \
 		.
 
 include(3rdparty/communi-desktop/src/src.pri)
+include(Security/security.pri)
 
 # Version stuff
 MAJOR = 0
@@ -233,6 +233,9 @@ HEADERS += \
 		3rdparty/nvwa/debug_new.h \
 		3rdparty/nvwa/fast_mutex.h \
 		3rdparty/nvwa/static_assert.h \
+		3rdparty/SingleApplication/localserver.h \
+		3rdparty/SingleApplication/singleapplication.h \
+		Chat/chatcompleter.h \
 		Chat/chatconverter.h \
 		Chat/chatcore.h \
 		Chat/chatsession.h \
@@ -251,21 +254,32 @@ HEADERS += \
 		FileFragments/Range.hpp \
 		FileFragments/Ranges.hpp \
 		geoiplist.h \
-		HostCache/hostcache.h \
+		HostCache/g2hostcache.h \
+		HostCache/g2hostcachehost.h \
 		HostCache/hostcachehost.h \
+		HostCache/hostcache.h \
 		Metalink/magnetlink.h \
 		Metalink/metalinkhandler.h \
 		Metalink/metalink4handler.h \
+		Misc/debugrwlock.h \
 		Misc/fileiconprovider.h \
+		Misc/idprovider.h \
 		Misc/networkiconprovider.h \
 		Misc/timedsignalqueue.h \
+		Misc/timeoutreadlocker.h \
 		Misc/timeoutwritelocker.h \
+		Misc/unorderedptrvector.h \
 		Models/categorynavigatortreemodel.h \
 		Models/discoverytablemodel.h \
 		Models/downloadstreemodel.h \
 		Models/downloadspeermodel.h \
+		Models/hostcachetablemodel.h \
+		Models/ircuserlistmodel.h \
 		Models/neighbourstablemodel.h \
+		Models/searchfilter.h \
+		Models/searchsortfilterproxymodel.h \
 		Models/searchtreemodel.h \
+		Models/securityfiltermodel.h \
 		Models/securitytablemodel.h \
 		Models/sharesnavigatortreemodel.h \
 		NetworkCore/buffer.h \
@@ -278,6 +292,7 @@ HEADERS += \
 		NetworkCore/handshake.h \
 		NetworkCore/handshakes.h \
 		NetworkCore/Hashes/hash.h \
+		NetworkCore/Hashes/hashset.h \
 		NetworkCore/hubhorizon.h \
 		NetworkCore/managedsearch.h \
 		NetworkCore/neighbour.h \
@@ -305,8 +320,6 @@ HEADERS += \
 		quazaaglobals.h \
 		quazaasettings.h \
 		quazaasysinfo.h \
-		Security/securerule.h \
-		Security/securitymanager.h \
 		ShareManager/file.h \
 		ShareManager/filehasher.h \
 		ShareManager/sharedfile.h \
@@ -332,8 +345,12 @@ HEADERS += \
 		UI/dialogeditshares.h \
 		UI/dialogfiltersearch.h \
 		UI/dialoghashprogress.h \
+		UI/dialogimportsecurity.h \
+		UI/dialogirccolordialog.h \
+		UI/dialogircsettings.h \
 		UI/dialoglanguage.h \
 		UI/dialoglibrarysearch.h \
+		UI/dialogmodifyrule.h \
 		UI/dialogneighbourinfo.h \
 		UI/dialogopentorrent.h \
 		UI/dialogpreviewprepare.h \
@@ -346,10 +363,14 @@ HEADERS += \
 		UI/dialogsplash.h \
 		UI/dialogtorrentproperties.h \
 		UI/dialogtransferprogresstooltip.h \
+		UI/ircchannelstackview.h \
+		UI/mediacontrols.h \
 		UI/suggestedlineedit.h \
 		UI/tableview.h \
 		UI/tabwidget.h \
 		UI/tabwidget_p.h \
+		UI/videocontainer.h \
+		UI/videowidget.h \
 		UI/widgetactivity.h \
 		UI/widgetchatinput.h \
 		UI/widgetdiscovery.h \
@@ -377,34 +398,18 @@ HEADERS += \
 		UI/widgettransfers.h \
 		UI/widgetuploads.h \
 		UI/winmain.h \
-		UI/wizardquickstart.h \
-		UI/wizardtreewidget.h \
-		Chat/chatcompleter.h \
-		UI/ircchannelstackview.h \
-		3rdparty/SingleApplication/singleapplication.h \
-		3rdparty/SingleApplication/localserver.h \
-		UI/dialogircsettings.h \
-		UI/dialogirccolordialog.h \
 		UI/wizardircconnection.h \
-		Models/ircuserlistmodel.h \
-		Security/iprule.h \
-		Security/iprangerule.h \
-		Security/hashrule.h \
-		Security/regexprule.h \
-		Security/useragentrule.h \
-		Security/contentrule.h \
-		Models/securityfiltermodel.h \
-		UI/dialogimportsecurity.h \
-	UI/dialogmodifyrule.h \
-	UI/videowidget.h \
-	UI/mediacontrols.h \
-    UI/videocontainer.h
+		UI/wizardquickstart.h \
+		UI/wizardtreewidget.h
 
 # Sources
 SOURCES += \
 		3rdparty/CyoEncode/CyoDecode.c \
 		3rdparty/CyoEncode/CyoEncode.c \
 		3rdparty/nvwa/debug_new.cpp \
+		3rdparty/SingleApplication/localserver.cpp \
+		3rdparty/SingleApplication/singleapplication.cpp \
+		Chat/chatcompleter.cpp \
 		Chat/chatconverter.cpp \
 		Chat/chatcore.cpp \
 		Chat/chatsession.cpp \
@@ -416,9 +421,12 @@ SOURCES += \
 		Discovery/gwc.cpp \
 		Discovery/networktype.cpp \
 		geoiplist.cpp \
-		HostCache/hostcache.cpp \
+		HostCache/g2hostcache.cpp \
+		HostCache/g2hostcachehost.cpp \
 		HostCache/hostcachehost.cpp \
+		HostCache/hostcache.cpp \
 		main.cpp \
+		Misc/debugrwlock.cpp \
 		Misc/fileiconprovider.cpp \
 		Misc/networkiconprovider.cpp \
 		Misc/timedsignalqueue.cpp \
@@ -429,8 +437,13 @@ SOURCES += \
 		Models/discoverytablemodel.cpp \
 		Models/downloadstreemodel.cpp \
 		Models/downloadspeermodel.cpp \
+		Models/hostcachetablemodel.cpp \
+		Models/ircuserlistmodel.cpp \
 		Models/neighbourstablemodel.cpp \
+		Models/searchfilter.cpp \
+		Models/searchsortfilterproxymodel.cpp \
 		Models/searchtreemodel.cpp \
+		Models/securityfiltermodel.cpp \
 		Models/securitytablemodel.cpp \
 		Models/sharesnavigatortreemodel.cpp \
 		NetworkCore/buffer.cpp \
@@ -443,6 +456,7 @@ SOURCES += \
 		NetworkCore/handshake.cpp \
 		NetworkCore/handshakes.cpp \
 		NetworkCore/Hashes/hash.cpp \
+		NetworkCore/Hashes/hashset.cpp \
 		NetworkCore/hubhorizon.cpp \
 		NetworkCore/managedsearch.cpp \
 		NetworkCore/neighbour.cpp \
@@ -469,8 +483,6 @@ SOURCES += \
 		quazaaglobals.cpp \
 		quazaasettings.cpp \
 		quazaasysinfo.cpp \
-		Security/securerule.cpp \
-		Security/securitymanager.cpp \
 		ShareManager/file.cpp \
 		ShareManager/filehasher.cpp \
 		ShareManager/sharedfile.cpp \
@@ -496,8 +508,12 @@ SOURCES += \
 		UI/dialogeditshares.cpp \
 		UI/dialogfiltersearch.cpp \
 		UI/dialoghashprogress.cpp \
+		UI/dialogimportsecurity.cpp \
+		UI/dialogirccolordialog.cpp \
+		UI/dialogircsettings.cpp \
 		UI/dialoglanguage.cpp \
 		UI/dialoglibrarysearch.cpp \
+		UI/dialogmodifyrule.cpp \
 		UI/dialogneighbourinfo.cpp \
 		UI/dialogopentorrent.cpp \
 		UI/dialogpreviewprepare.cpp \
@@ -510,9 +526,13 @@ SOURCES += \
 		UI/dialogsplash.cpp \
 		UI/dialogtorrentproperties.cpp \
 		UI/dialogtransferprogresstooltip.cpp \
+		UI/ircchannelstackview.cpp \
+		UI/mediacontrols.cpp \
 		UI/suggestedlineedit.cpp \
 		UI/tableview.cpp \
 		UI/tabwidget.cpp \
+		UI/videowidget.cpp \
+		UI/videocontainer.cpp \
 		UI/widgetactivity.cpp \
 		UI/widgetchatinput.cpp \
 		UI/widgetdiscovery.cpp \
@@ -540,28 +560,9 @@ SOURCES += \
 		UI/widgettransfers.cpp \
 		UI/widgetuploads.cpp \
 		UI/winmain.cpp \
-		UI/wizardtreewidget.cpp \
-		UI/wizardquickstart.cpp \
-		Chat/chatcompleter.cpp \
-		UI/ircchannelstackview.cpp \
-		3rdparty/SingleApplication/singleapplication.cpp \
-		3rdparty/SingleApplication/localserver.cpp \
-		UI/dialogircsettings.cpp \
-		UI/dialogirccolordialog.cpp \
 		UI/wizardircconnection.cpp \
-		Models/ircuserlistmodel.cpp \
-		Security/iprule.cpp \
-		Security/iprangerule.cpp \
-		Security/hashrule.cpp \
-		Security/regexprule.cpp \
-		Security/useragentrule.cpp \
-		Security/contentrule.cpp \
-		Models/securityfiltermodel.cpp \
-		UI/dialogimportsecurity.cpp \
-	UI/dialogmodifyrule.cpp \
-	UI/videowidget.cpp \
-	UI/mediacontrols.cpp \
-    UI/videocontainer.cpp
+		UI/wizardtreewidget.cpp \
+		UI/wizardquickstart.cpp
 
 FORMS += \
 		UI/dialogabout.ui \
@@ -576,8 +577,12 @@ FORMS += \
 		UI/dialogeditshares.ui \
 		UI/dialogfiltersearch.ui \
 		UI/dialoghashprogress.ui \
+		UI/dialogimportsecurity.ui \
+		UI/dialogirccolordialog.ui \
+		UI/dialogircsettings.ui \
 		UI/dialoglanguage.ui \
 		UI/dialoglibrarysearch.ui \
+		UI/dialogmodifyrule.ui \
 		UI/dialogneighbourinfo.ui \
 		UI/dialogopentorrent.ui \
 		UI/dialogpreviewprepare.ui \
@@ -590,7 +595,9 @@ FORMS += \
 		UI/dialogsplash.ui \
 		UI/dialogtorrentproperties.ui \
 		UI/dialogtransferprogresstooltip.ui \
+		UI/mediacontrols.ui \
 		UI/mediasettings.ui \
+		UI/videocontainer.ui \
 		UI/widgetactivity.ui \
 		UI/widgetchatinput.ui \
 		UI/widgetdiscovery.ui \
@@ -616,14 +623,8 @@ FORMS += \
 		UI/widgettransfers.ui \
 		UI/widgetuploads.ui \
 		UI/winmain.ui \
-		UI/wizardquickstart.ui \
-	UI/dialogircsettings.ui \
-	UI/dialogirccolordialog.ui \
-	UI/wizardircconnection.ui \
-	UI/dialogimportsecurity.ui \
-	UI/dialogmodifyrule.ui \
-	UI/mediacontrols.ui \
-    UI/videocontainer.ui
+		UI/wizardircconnection.ui \
+		UI/wizardquickstart.ui
 
 TRANSLATIONS = \
 		Language/quazaa_af.ts \

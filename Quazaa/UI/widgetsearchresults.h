@@ -30,52 +30,60 @@
 #include <QLineEdit>
 #include "widgetsearchtemplate.h"
 
-class CWidgetSearch;
+class WidgetSearch;
 
 namespace Ui
 {
-	class CWidgetSearchResults;
+class WidgetSearchResults;
 }
 
-class CWidgetSearchResults : public QMainWindow
+class WidgetSearchResults : public QMainWindow
 {
 	Q_OBJECT
-public:
-	CWidgetSearchResults(QWidget* parent = 0);
-	~CWidgetSearchResults();
+private:
+	Ui::WidgetSearchResults* ui;
+
 	QLabel* labelFilter;
-	QLineEdit* lineEditFilter;
+	QLineEdit* m_pLineEditFilter;
+
+	SearchFilter::FilterControlData* m_pFilterData;
+
+public:
+	WidgetSearchResults( QWidget* parent = 0 );
+	~WidgetSearchResults();
 	void saveWidget();
 
-signals:
-	void searchTabChanged(CWidgetSearchTemplate* searchPage);
-	void statsUpdated(CWidgetSearchTemplate* searchPage);
-	void stateChanged();
-
 protected:
-	void changeEvent(QEvent* e);
+	void changeEvent( QEvent* e );
 
 private:
-	Ui::CWidgetSearchResults* ui;
+	void updateSearchFilter();
+
+signals:
+	void searchTabChanged( WidgetSearchTemplate* searchPage );
+	void statsUpdated( WidgetSearchTemplate* searchPage );
+	void stateChanged();
 
 public slots:
-
-	void startSearch(QString searchString);
-	void startNewSearch(QString* searchString);
+	void startSearch( QString searchString );
+	void startNewSearch( QString* searchString );
 	void addSearchTab();
 	void stopSearch();
 	bool clearSearch();
-	void onStatsUpdated(CWidgetSearchTemplate* searchWidget);
+	void onStatsUpdated( WidgetSearchTemplate* searchWidget );
 
 private slots:
-	void on_tabWidgetSearch_currentChanged(int index);
-	void on_splitterSearchDetails_customContextMenuRequested(QPoint pos);
+	void on_tabWidgetSearch_currentChanged( int index );
+	void on_splitterSearchDetails_customContextMenuRequested( QPoint pos );
 	void on_actionFilterMore_triggered();
-	void on_tabWidgetSearch_tabCloseRequested(int index);
+	void on_tabWidgetSearch_tabCloseRequested( int index );
 	void on_actionSearchDownload_triggered();
 	void setSkin();
 
-	friend class CWidgetSearch;
+	void lineEditSearchChanged();
+	void advancedSearchFilteringChanged();
+
+	friend class WidgetSearch;
 };
 
 #endif // WIDGETSEARCHRESULTS_H

@@ -32,81 +32,83 @@
 #include "debug_new.h"
 #endif
 
-CChatSession::CChatSession(QObject *parent) :
-	CNetworkConnection(parent)
+ChatSession::ChatSession( QObject* parent ) :
+	NetworkConnection( parent )
 {
 	m_nState = csNull;
-	m_nProtocol = dpNull;
+	m_nProtocol = DiscoveryProtocol::None;
 	m_pWidget = 0;
 
 	m_bShareaza = false;
 }
-CChatSession::~CChatSession()
+ChatSession::~ChatSession()
 {
-	ChatCore.Remove(this);
+	chatCore.remove( this );
 }
 
 // called from GUI thread
-void CChatSession::connectNode()
+void ChatSession::connectNode()
 {
-	MainWindow->OpenChat(this);
+	mainWindow->OpenChat( this );
 	m_nState = csConnecting;
-	ChatCore.Add(this);
+	chatCore.add( this );
 
-	if( thread() != &ChatThread )
-		moveToThread(&ChatThread);
+	if ( thread() != &chatThread )
+	{
+		moveToThread( &chatThread );
+	}
 }
 
-void CChatSession::onTimer(quint32 tNow)
+void ChatSession::onTimer( quint32 tNow )
 {
-	if( m_nState < csConnected )
+	if ( m_nState < csConnected )
 	{
-		if( tNow - m_tConnected > quazaaSettings.Connection.TimeoutConnect )
+		if ( tNow - m_tConnected > quazaaSettings.Connection.TimeoutConnect )
 		{
 			m_nState = csClosed;
-			CNetworkConnection::close();
-			emit systemMessage("Timed out connecting to remote host");
+			NetworkConnection::close();
+			emit systemMessage( "Timed out connecting to remote host" );
 		}
 	}
-	else if( m_nState == csConnected )
+	else if ( m_nState == csConnected )
 	{
 
 	}
 }
 
-void CChatSession::onConnectNode()
+void ChatSession::onConnectNode()
 {
 
 }
-void CChatSession::onDisconnectNode()
+void ChatSession::onDisconnectNode()
 {
 	m_nState = csClosed;
-	emit systemMessage("Connection lost");
+	emit systemMessage( "Connection lost" );
 }
-void CChatSession::onRead()
+void ChatSession::onRead()
 {
 
 }
-void CChatSession::onError(QAbstractSocket::SocketError e)
+void ChatSession::onError( QAbstractSocket::SocketError e )
 {
-	Q_UNUSED(e);
+	Q_UNUSED( e );
 }
 
-void CChatSession::onStateChange(QAbstractSocket::SocketState s)
+void ChatSession::onStateChange( QAbstractSocket::SocketState s )
 {
-	Q_UNUSED(s);
+	Q_UNUSED( s );
 }
 
-void CChatSession::setupWidget(CWidgetPrivateMessage *pWg)
+void ChatSession::setupWidget( CWidgetPrivateMessage* pWg )
 {
 	m_pWidget = pWg;
 
-	connect(this, SIGNAL(guidChanged(QUuid)), m_pWidget, SLOT(OnGUIDChanged(QUuid)));
-	connect(this, SIGNAL(nickChanged(QString)), m_pWidget, SLOT(OnNickChanged(QString)));
-	connect(this, SIGNAL(incomingMessage(QString,bool)), m_pWidget, SLOT(OnIncomingMessage(QString,bool)));
-	connect(this, SIGNAL(systemMessage(QString)), m_pWidget, SLOT(OnSystemMessage(QString)));
-	connect(m_pWidget, SIGNAL(SendMessageS(QString,bool)), this, SLOT(sendMessage(QString,bool)));
-	connect(m_pWidget, SIGNAL(SendMessageS(QTextDocument*,bool)), this, SLOT(sendMessage(QTextDocument*,bool)));
-	connect(m_pWidget, SIGNAL(destroyed()), this, SLOT(deleteLater()));
+	connect( this, SIGNAL( guidChanged( QUuid ) ), m_pWidget, SLOT( OnGUIDChanged( QUuid ) ) );
+	connect( this, SIGNAL( nickChanged( QString ) ), m_pWidget, SLOT( OnNickChanged( QString ) ) );
+	connect( this, SIGNAL( incomingMessage( QString, bool ) ), m_pWidget, SLOT( OnIncomingMessage( QString, bool ) ) );
+	connect( this, SIGNAL( systemMessage( QString ) ), m_pWidget, SLOT( OnSystemMessage( QString ) ) );
+	connect( m_pWidget, SIGNAL( SendMessageS( QString, bool ) ), this, SLOT( sendMessage( QString, bool ) ) );
+	connect( m_pWidget, SIGNAL( SendMessageS( QTextDocument*, bool ) ), this, SLOT( sendMessage( QTextDocument*, bool ) ) );
+	connect( m_pWidget, SIGNAL( destroyed() ), this, SLOT( deleteLater() ) );
 }
 

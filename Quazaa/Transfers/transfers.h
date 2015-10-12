@@ -9,37 +9,37 @@
 
 #include "thread.h"
 
-class CTransfer;
-class CRateController;
+class Transfer;
+class RateController;
 
-class CTransfers : public QObject
+class Transfers : public QObject
 {
 	Q_OBJECT
 public:
 	QMutex m_pSection;
 	bool   m_bActive;
-	CRateController* m_pController;
+	RateController* m_pController;
 	QTimer m_oTimer;
 
 protected:
-	QMultiHash<void*, CTransfer*> m_lTransfers;
+	QMultiHash<void*, Transfer*> m_lTransfers;
 
 public:
-	CTransfers(QObject* parent = 0);
-	~CTransfers();
+	Transfers( QObject* parent = 0 );
+	~Transfers();
 	void start();
 	void stop();
 
-	void add(CTransfer* pTransfer);
-	void remove(CTransfer* pTransfer);
+	void add( Transfer* pTransfer );
+	void remove( Transfer* pTransfer );
 
-	QList<CTransfer*> getByOwner(void* pOwner);
+	QList<Transfer*> getByOwner( void* pOwner );
 signals:
 
 public slots:
 	void onTimer();
 };
 
-extern CTransfers Transfers;
-extern CThread TransfersThread;
+extern Transfers transfers;
+extern CThread transfersThread;
 #endif // TRANSFERS_H

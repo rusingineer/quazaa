@@ -4,21 +4,22 @@
 #include "neighbourstablemodel.h"
 #include <QDialog>
 
-namespace Ui {
+namespace Ui
+{
 class CDialogNeighbourInfo;
 }
 
-class CDialogNeighbourInfo : public QDialog
+class DialogNeighbourInfo : public QDialog
 {
 	Q_OBJECT
 
 public:
-	explicit CDialogNeighbourInfo(CNeighboursTableModel::Neighbour* pNeighbour, QWidget *parent = 0);
-	~CDialogNeighbourInfo();
+	explicit DialogNeighbourInfo( NeighboursTableModel::NeighbourData* pNeighbour, QWidget* parent = 0 );
+	~DialogNeighbourInfo();
 
 private:
-	Ui::CDialogNeighbourInfo *ui;
-	QString neighbourConnectionDescription(CNeighboursTableModel::Neighbour* pNeighbour);
+	Ui::CDialogNeighbourInfo* ui;
+	QString neighbourConnectionDescription( NeighboursTableModel::NeighbourData* pNeighbour );
 };
 
 #endif // DIALOGNEIGHBOURINFO_H

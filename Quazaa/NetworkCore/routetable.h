@@ -27,13 +27,13 @@
 #include "types.h"
 #include <QHash>
 
-class CG2Node;
+class G2Node;
 
 struct G2RouteItem
 {
 	QUuid           pGUID;
-	CG2Node*        pNeighbour;
-	CEndPoint	    pEndpoint;
+	G2Node*        pNeighbour;
+	EndPoint	    pEndpoint;
 	quint32         nExpireTime;
 
 	G2RouteItem()
@@ -44,24 +44,25 @@ struct G2RouteItem
 
 };
 
-class CRouteTable
+class RouteTable
 {
 protected:
 	QHash<QUuid, G2RouteItem*>  m_lRoutes;
 public:
-	CRouteTable();
-	~CRouteTable();
+	RouteTable();
+	~RouteTable();
 
-	bool add(QUuid& pGUID, CG2Node* pNeighbour = 0, CEndPoint* pEndpoint = 0, bool bNoExpire = false);
-	bool add(QUuid& pGUID, CG2Node* pNeighbour, bool bNoExpire = false);
-	bool add(QUuid& pGUID, CEndPoint& pEndpoint, bool bNoExpire = false);
+	bool add( QUuid& pGUID, G2Node* pNeighbour = 0, EndPoint* pEndPoint = 0,
+			  bool bNoExpire = false );
+	bool add( QUuid& pGUID, G2Node* pNeighbour, bool bNoExpire = false );
+	bool add( QUuid& pGUID, EndPoint& pEndpoint, bool bNoExpire = false );
 
-	void remove(QUuid& pGUID);
-	void remove(CG2Node* pNeighbour);
+	void remove( QUuid& pGUID );
+	void remove( G2Node* pNeighbour );
 
-	bool find(QUuid& pGUID, CG2Node** ppNeighbour = 0, CEndPoint* pEndpoint = 0);
+	bool find( const QUuid& pGUID, G2Node** ppNeighbour = NULL, EndPoint* pEndpoint = NULL );
 
-	void expireOldRoutes(bool bForce = false);
+	void expireOldRoutes( bool bForce = false );
 	void clear();
 
 	void dump();

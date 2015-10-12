@@ -39,32 +39,46 @@
 
 namespace Ui
 {
-	class CDialogModifyRule;
+class DialogModifyRule;
 }
 
-namespace RuleIndex {
-	enum Rows {
-		IPAddress = 0, IPAddressRange = 1, Hash = 2, Content = 3, RegularExpression = 4, UserAgent = 5
-	};
+namespace RuleIndex
+{
+enum Rows
+{
+	IPAddress           = 0,
+	IPAddressRange      = 1,
+	Hash                = 2,
+	Content             = 3,
+	RegularExpression   = 4,
+	UserAgent           = 5
+#if SECURITY_ENABLE_GEOIP
+	,Country             = 6
+#endif // SECURITY_ENABLE_GEOIP
+};
 }
 
-class CDialogModifyRule : public QDialog
+class DialogModifyRule : public QDialog
 {
 	Q_OBJECT
 
-private:
-	Ui::CDialogModifyRule* ui;
-	CSecureRule* m_pRule;
-	CWidgetSecurity* m_pParent;
+	Rule*                   m_pRule;
+	CWidgetSecurity*        m_pParent;
+	Ui::DialogModifyRule*   ui;
+
 public:
-	// Creates a dialog window using the provided rule as basis. To create a new rule, don't provide a rule.
-	CDialogModifyRule(CWidgetSecurity* parent, CSecureRule* pRule = NULL);
-	~CDialogModifyRule();
+	/**
+	 * @brief DialogModifyRule creates a new Rule editing dialog.
+	 *
+	 * @param parent  The parent Widget.
+	 * @param pRule   The Rule to modify. Note: The dialog takes ownership of the provided Rule.
+	 * If a new Rule shall be created, don't pass a Rule as parameter.
+	 */
+	DialogModifyRule( CWidgetSecurity* parent, Rule* pRule = NULL );
+	~DialogModifyRule();
 
 protected:
-	void changeEvent(QEvent* e);
-
-private:
+	void changeEvent( QEvent* e );
 
 signals:
 	void closed();
@@ -72,7 +86,7 @@ signals:
 private slots:
 	void on_pushButtonCancel_clicked();
 	void on_pushButtonOK_clicked();
-	void on_comboBoxExpire_currentIndexChanged(int index);
+	void on_comboBoxExpire_currentIndexChanged( int index );
 	void setSkin();
 	void on_lineEditDays_editingFinished();
 	void on_lineEditHours_editingFinished();

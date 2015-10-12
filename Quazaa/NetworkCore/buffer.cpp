@@ -25,201 +25,175 @@
 #include "buffer.h"
 
 #include <QByteArray>
-#include <exception>
 
 #include "debug_new.h"
 
-CBuffer::CBuffer(quint32 nMinimum) :
-	m_pBuffer(0),
-	m_nLength(0),
-	m_nBuffer(0)
+Buffer::Buffer( quint32 nMinimum ) :
+	m_pBuffer( NULL ),
+	m_nAllocatedSize( 0 ),
+	m_nMinimumAllocationSize( nMinimum ),
+	m_nCurrentSize( 0 )
 {
-	m_nMinimum = nMinimum;
 }
 
-CBuffer::~CBuffer()
+Buffer::~Buffer()
 {
-	if(m_pBuffer)
+	if ( m_pBuffer )
 	{
-		free(m_pBuffer);
+		free( m_pBuffer );
 	}
 }
 
-CBuffer& CBuffer::append(const void* pData, const quint32 nLength)
+Buffer& Buffer::append( const void* pData, const quint32 nLength )
 {
-	if(pData == 0 || nLength == 0)
+	if ( pData && nLength )
 	{
-		return *this;
+		ensure( nLength );
+
+		memcpy( m_pBuffer + m_nCurrentSize, pData, nLength );
+
+		m_nCurrentSize += nLength;
 	}
-
-	ensure(nLength);
-
-	memcpy(m_pBuffer + m_nLength, pData, nLength);
-
-	m_nLength += nLength;
 
 	return *this;
 }
 
-CBuffer& CBuffer::append(const char* pStr)
+Buffer& Buffer::append( const char* pCStr )
 {
-	return append(pStr, qstrlen(pStr));
+	return append( pCStr, qstrlen( pCStr ) );
 }
 
-CBuffer& CBuffer::append(QByteArray& baData)
+Buffer& Buffer::append( const QByteArray& baData )
 {
-	return append(baData.data(), baData.size());
+	return append( baData.data(), baData.size() );
 }
 
-CBuffer& CBuffer::append(CBuffer& pOther)
+Buffer& Buffer::append( const Buffer& pOther )
 {
-	return append(pOther.data(), pOther.size());
+	return append( pOther.data(), pOther.size() );
 }
 
-CBuffer &CBuffer::append(CBuffer *pOther)
+Buffer& Buffer::append( const Buffer* pOther )
 {
-	return append(pOther->data(), pOther->size());
+	return append( pOther->data(), pOther->size() );
 }
 
-CBuffer& CBuffer::prepend(const void* pData, const quint32 nLength)
+Buffer& Buffer::prepend( const void* pData, const quint32 nLength )
 {
-	return insert(0, pData, nLength);
+	return insert( 0, pData, nLength );
 }
 
-CBuffer& CBuffer::prepend(const char* pStr)
+Buffer& Buffer::prepend( const char* pCStr )
 {
-	return prepend(pStr, qstrlen(pStr));
+	return insert( 0, pCStr, qstrlen( pCStr ) );
 }
 
-CBuffer& CBuffer::insert(const quint32 i, const void* pData, const quint32 nLength)
+Buffer& Buffer::insert( const quint32 nOffset, const void* pData, const quint32 nLength )
 {
-	if(pData == 0)
+	if ( pData )
 	{
-		return *this;
+		ensure( nLength );
+
+		memmove( m_pBuffer + nOffset + nLength, m_pBuffer + nOffset, m_nCurrentSize - nOffset );
+		memcpy( m_pBuffer + nOffset, pData, nLength );
+
+		m_nCurrentSize += nLength;
 	}
-
-	ensure(nLength);
-
-	memmove(m_pBuffer + i + nLength, m_pBuffer + i, m_nLength - i);
-
-	memcpy(m_pBuffer + i, pData, nLength);
-
-	m_nLength += nLength;
 
 	return *this;
 }
 
-CBuffer& CBuffer::insert(const quint32 i, const char* pStr)
+Buffer& Buffer::insert( const quint32 nOffset, const char* pCStr )
 {
-	return insert(i, pStr, qstrlen(pStr));
+	return insert( nOffset, pCStr, qstrlen( pCStr ) );
 }
 
-CBuffer& CBuffer::remove(const quint32 nPos, const quint32 nLength)
+Buffer& Buffer::remove( const quint32 nLength, const quint32 nPos )
 {
-	if(nPos == 0 && nLength >= m_nLength)
+	if ( !nPos && nLength >= m_nCurrentSize )
 	{
-		m_nLength = 0;
+		m_nCurrentSize = 0;
 	}
-	else if(nPos + nLength >= m_nLength)
+	else if ( nPos + nLength >= m_nCurrentSize )
 	{
-		m_nLength = nPos;
+		m_nCurrentSize = nPos;
 	}
 	else
 	{
-		memmove(m_pBuffer + nPos, m_pBuffer + nPos + nLength, m_nLength - nPos - nLength);
-		m_nLength -= nLength;
+		memmove( m_pBuffer + nPos, m_pBuffer + nPos + nLength, m_nCurrentSize - nPos - nLength );
+		m_nCurrentSize -= nLength;
 	}
 
 	return *this;
 }
 
-CBuffer& CBuffer::remove(const quint32 nLength)
+void Buffer::ensure( const quint32 nLength )
 {
-	return remove(0, nLength);
-}
-
-void CBuffer::ensure(const quint32 nLength)
-{
-	if(nLength > 0xffffffff - m_nBuffer)
+	if ( nLength > 0xffffffff - m_nAllocatedSize )
 	{
 		qWarning() << "nLength > UINT_MAX in CBuffer::ensure()";
 		throw std::bad_alloc();
 	}
 
-	if(m_nBuffer - m_nLength > nLength)
+	if ( m_nAllocatedSize > nLength + m_nCurrentSize )
 	{
-		// We shrink the buffer if we allocated twice the minimum and we actually need less than minimum
-		if(m_nBuffer > m_nMinimum * 2 && m_nLength + nLength < m_nMinimum)
+		// We shrink the buffer if we allocated twice the minimum and we actually need less than
+		// the minimum.
+		if ( m_nAllocatedSize > m_nMinimumAllocationSize * 2 &&
+			 m_nCurrentSize + nLength < m_nMinimumAllocationSize )
 		{
-			const quint32 nBuffer = m_nMinimum;
-			char* pBuffer = (char*)realloc(m_pBuffer, nBuffer);
-			if(! pBuffer)
+			try
 			{
-				return;
+				reallocate( m_nMinimumAllocationSize );
 			}
-			m_nBuffer = nBuffer;
-			m_pBuffer = pBuffer;
+			catch ( std::bad_alloc )
+			{
+				// failing to shrink is OK, we just ignore that
+			}
 		}
-		return;
 	}
-
-	quint32 nBuffer = m_nLength + nLength;
-
-	// first alloc will be m_nMinimum bytes or 1024
-	// if we need more, we allocate twice as needed
-	if(nBuffer < qMax(1024u, m_nMinimum))
+	else // we need to allocate more memory
 	{
-		nBuffer = qMax(1024u, m_nMinimum);
-	}
-	else
-	{
-		nBuffer *= 2;
-	}
+		quint32 nNewBufferSize = m_nCurrentSize + nLength;
 
-	char* pBuffer = (char*)realloc(m_pBuffer, nBuffer);
-
-	if(!pBuffer)
-	{
-		qWarning() << "Out of memory in CBuffer::ensure()";
-		throw std::bad_alloc();
-	}
-
-	m_nBuffer = nBuffer;
-	m_pBuffer = pBuffer;
-}
-
-void CBuffer::resize(const quint32 nLength)
-{
-	if(nLength <= m_nLength || nLength <= m_nBuffer)
-	{
-		m_nLength = nLength;
-	}
-	else if(nLength > m_nBuffer)
-	{
-		char* pBuffer = (char*)realloc(m_pBuffer, nLength * 2);
-		if(!pBuffer)
+		// first alloc will be m_nMinimum bytes or 1024
+		// if we need more, we allocate twice as needed
+		quint32 nMin = qMax( 1024u, m_nMinimumAllocationSize );
+		if ( nNewBufferSize < nMin )
 		{
-			qWarning() << "Out of memory in CBuffer::resize()";
-			throw std::bad_alloc();
+			nNewBufferSize = nMin;
 		}
-		m_pBuffer = pBuffer;
-		m_nBuffer = nLength * 2;
-		m_nLength = nLength;
+		else
+		{
+			nNewBufferSize *= 2;
+		}
+
+		reallocate( nNewBufferSize );
 	}
 }
 
-QString CBuffer::toHex() const
+void Buffer::resize( const quint32 nLength )
+{
+	if ( nLength > m_nAllocatedSize )
+	{
+		reallocate( qMax( nLength * 2, m_nMinimumAllocationSize ) );
+	}
+
+	m_nCurrentSize = nLength;
+}
+
+QString Buffer::toHex() const
 {
 	const char* pszHex = "0123456789ABCDEF";
 	QByteArray strDump;
 
-	strDump.resize(m_nLength * 3);
+	strDump.resize( m_nCurrentSize * 3 );
 	char* pszDump = strDump.data();
 
-	for(quint32 i = 0 ; i < m_nLength ; i++)
+	for ( quint32 i = 0 ; i < m_nCurrentSize ; ++i )
 	{
-		int nChar = *reinterpret_cast<uchar*>(&m_pBuffer[i]);
-		if(i)
+		int nChar = *reinterpret_cast<uchar*>( &m_pBuffer[i] );
+		if ( i )
 		{
 			*pszDump++ = ' ';
 		}
@@ -232,17 +206,17 @@ QString CBuffer::toHex() const
 	return strDump;
 }
 
-QString CBuffer::toAscii() const
+QString Buffer::toAscii() const
 {
 	QByteArray strDump;
 
-	strDump.resize(m_nLength + 1);
+	strDump.resize( m_nCurrentSize + 1 );
 	char* pszDump = strDump.data();
 
-	for(uint i = 0 ; i < m_nLength ; i++)
+	for ( uint i = 0 ; i < m_nCurrentSize ; ++i )
 	{
-		int nChar = *reinterpret_cast<uchar*>(&m_pBuffer[i]);
-		*pszDump++ = (nChar >= 32 ? nChar : '.');
+		int nChar = *reinterpret_cast<uchar*>( &m_pBuffer[i] );
+		*pszDump++ = ( nChar >= 32 ? nChar : '.' );
 	}
 
 	*pszDump = 0;
@@ -250,7 +224,7 @@ QString CBuffer::toAscii() const
 	return strDump;
 }
 
-QString CBuffer::dump() const
+QString Buffer::dump() const
 {
 	QString sHex = toHex();
 	QString sAscii = toAscii();
@@ -258,14 +232,29 @@ QString CBuffer::dump() const
 
 	int nOffset = 0;
 
-	sRet = QString("Length: %1 \nOffset      Hex                             ASCII\n------------------------------------------------------\n").arg(m_nLength);
+	sRet = QString( "Length: %1 \nOffset      Hex                     " ).arg( m_nCurrentSize ) +
+		   QString( "        ASCII\n------------------------------------------------------\n" );
 
-	for( ; nOffset < sAscii.length(); nOffset += 10 )
+	for ( ; nOffset < sAscii.length(); nOffset += 10 )
 	{
-		QString sLine("0x%1  %2  %3\n");
+		QString sLine( "0x%1  %2  %3\n" );
 
-		sRet += sLine.arg(nOffset, 8, 16, QLatin1Char('0')).arg(sHex.mid(nOffset * 3, 10 * 3), -30, QLatin1Char(' ')).arg(sAscii.mid(nOffset, 10));
+		sRet += sLine.arg( nOffset, 8, 16, QLatin1Char( '0' )
+						 ).arg( sHex.mid( nOffset * 3, 10 * 3 ), -30, QLatin1Char( ' ' )
+							  ).arg( sAscii.mid( nOffset, 10 ) );
 	}
 
 	return sRet;
+}
+
+void Buffer::reallocate( quint32 nNewSize ) throw( std::bad_alloc )
+{
+	char* pBuffer = ( char* )realloc( m_pBuffer, nNewSize );
+	if ( !pBuffer )
+	{
+		qWarning() << "Out of memory in Buffer::reallocate()";
+		throw std::bad_alloc();
+	}
+	m_pBuffer = pBuffer;
+	m_nAllocatedSize = nNewSize;
 }

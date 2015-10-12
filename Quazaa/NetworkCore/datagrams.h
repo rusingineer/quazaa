@@ -42,16 +42,19 @@ class DatagramWatcher
 {
 public:
 	virtual      ~DatagramWatcher();
-	virtual void onSuccess(void* pParam) = 0;
-	virtual void onFailure(void* pParam) = 0;
+	virtual void onSuccess( void* pParam ) = 0;
+	virtual void onFailure( void* pParam ) = 0;
 };
 
 class DatagramOut;
 class DatagramIn;
-class CBuffer;
+class Buffer;
 class QHostAddress;
 
-class CDatagrams : public QObject
+/**
+ * @brief The Datagrams class handles sending and recieving UDP datagrams.
+ */
+class Datagrams : public QObject
 {
 	Q_OBJECT
 
@@ -73,19 +76,19 @@ protected:
 
 	QHash < QHostAddress,
 		  QHash<quint32, DatagramIn*>
-		  >                     m_RecvCache;            // For searching by ip & sequence.
+		  >                     m_RecvCache;            // For searching by IP & sequence.
 	QLinkedList<DatagramIn*>    m_RecvCacheTime;        // A list ordered by recieve time, last is oldest.
 
 	QLinkedList <
-		QPair<CEndPoint, char*>
-				>               m_AckCache;
+	QPair<EndPoint, char*>
+	>               m_AckCache;
 
 	QLinkedList<DatagramIn*> m_FreeDatagramIn;		// A list of free incoming packets.
-	QLinkedList<CBuffer*>	 m_FreeBuffer;		// A list of free buffers.
+	QLinkedList<Buffer*>	 m_FreeBuffer;		// A list of free buffers.
 
-	CBuffer*    	m_pRecvBuffer;
-	QHostAddress*   m_pHostAddress;
-	quint16         m_nPort;
+	Buffer*    	m_pRecvBuffer;
+	QHostAddress*   m_pHostAddress;             // the sender's host address
+	quint16         m_nPort;                    // the sender's port
 
 	bool            m_bActive;
 
@@ -97,29 +100,30 @@ protected:
 	quint32			m_nOutFrags;
 
 public:
-	CDatagrams();
-	~CDatagrams();
+	Datagrams();
+	~Datagrams();
 
 	void listen();
 	void disconnectNode();
 
-	void sendPacket(CEndPoint& oAddr, G2Packet* pPacket, bool bAck = false, DatagramWatcher* pWatcher = 0, void* pParam = 0);
+	void sendPacket( G2Packet* pPacket, const EndPoint& oAddr, bool bAck = false,
+					 DatagramWatcher* pWatcher = NULL, void* pParam = NULL );
 
-	void removeOldIn(bool bForce = false);
-	void remove(DatagramIn* pDatagramIn, bool bReclaim = false);
-	void remove(DatagramOut* pDatagramOut);
+	void removeOldIn( bool bForce = false );
+	void remove( DatagramIn* pDatagramIn, bool bReclaim = false );
+	void remove( DatagramOut* pDatagramOut );
 	void onReceiveGND();
 	void onAcknowledgeGND();
 
-	void onPacket(CEndPoint addr, G2Packet* pPacket);
-	void onPing(CEndPoint& addr, G2Packet* pPacket);
-	void onPong(CEndPoint& addr, G2Packet* pPacket);
-	void onCRAWLR(CEndPoint& addr, G2Packet* pPacket);
-	void onQKR(CEndPoint& addr, G2Packet* pPacket);
-	void onQKA(CEndPoint& addr, G2Packet* pPacket);
-	void onQA(CEndPoint& addr, G2Packet* pPacket);
-	void onQH2(CEndPoint& addr, G2Packet* pPacket);
-	void onQuery(CEndPoint& addr, G2Packet* pPacket);
+	void onPacket( G2Packet* pPacket, const EndPoint& addr );
+	void onPing  ( G2Packet* pPacket, const EndPoint& addr );
+	void onPong  ( G2Packet* pPacket, const EndPoint& addr );
+	void onCRAWLR( G2Packet* pPacket, const EndPoint& addr );
+	void onQKR   ( G2Packet* pPacket, const EndPoint& addr );
+	void onQKA   ( G2Packet* pPacket, const EndPoint& oHost );
+	void onQA    ( G2Packet* pPacket, const EndPoint& addr );
+	void onQH2   ( G2Packet* pPacket, const EndPoint& addr );
+	void onQuery ( G2Packet* pPacket, const EndPoint& addr );
 
 	inline quint32 downloadSpeed();
 	inline quint32 uploadSpeed();
@@ -137,35 +141,65 @@ signals:
 	friend class CNetwork;
 };
 
-#pragma pack(push, 1)
+#pragma pack(push, 1) // instructs the compiler to not to use padding when declaring the struct
+/**
+ * @typedef GND_HEADER defines the UDP reliability protocol control header used in Gnutella2.
+ */
 typedef struct
 {
+	/**
+	 * @brief szTag contains a three byte encoding protocol identifier, in our case "GND" for
+	 * "GNutella Datagram". If this signature is not present the packet should not be decoded as a
+	 * Gnutella2 reliability layer transmission.
+	 */
 	char     szTag[3];
+
+	/**
+	 * @brief nFlags contains flags which modify the content of the packet.
+	 * See: http://g2.doxu.org/index.php/UDP_Transceiver#Encoding
+	 */
 	quint8   nFlags;
+
+	/**
+	 * @brief nSequence contains the sequence number of the packet. Sequence numbers on consecutive
+	 * packets need not be increasing (although that is convenient), they must only be different.
+	 * If a packet is fragmented, all of its fragments will have the same sequence number.
+	 * Byte order is unimportant here.
+	 */
 	quint16  nSequence;
+
+	/**
+	 * @brief nPart contains the fragment part number (1 <= nPart <= nCount)
+	 */
 	quint8   nPart;
+
+	/**
+	 * @brief nCount contains the number of fragment parts in this packet. On a transmission, this
+	 * value will be non-zero (all packets must have at least one fragment). If nCount is zero, this
+	 * is an acknowledgement.
+	 */
 	quint8   nCount;
 } GND_HEADER;
 
 #pragma pack(pop)
 
-quint32 CDatagrams::downloadSpeed()
+quint32 Datagrams::downloadSpeed()
 {
-	return m_mInput.AvgUsage();
+	return m_mInput.avgUsage();
 }
-quint32 CDatagrams::uploadSpeed()
+quint32 Datagrams::uploadSpeed()
 {
-	return m_mOutput.AvgUsage();
+	return m_mOutput.avgUsage();
 }
-bool CDatagrams::isFirewalled()
+bool Datagrams::isFirewalled()
 {
 	return m_bFirewalled;
 }
-bool CDatagrams::isListening()
+bool Datagrams::isListening()
 {
-	return (m_bActive && m_pSocket && m_pSocket->isValid());
+	return ( m_bActive && m_pSocket && m_pSocket->isValid() );
 }
 
-extern CDatagrams Datagrams;
+extern Datagrams datagrams;
 
 #endif // DATAGRAMS_H

@@ -26,35 +26,32 @@
 #define QUERYHIT_H
 
 #include "types.h"
+#include "NetworkCore/Hashes/hashset.h"
 
 class G2Packet;
-class CQuery;
-class CHash;
+class Query;
 
 struct QueryHitInfo
 {
-	CEndPoint	    m_oNodeAddress;
-	CEndPoint		m_oSenderAddress;
-	QUuid           m_oGUID;
-	QUuid           m_oNodeGUID;
-	QList<CEndPoint>    m_lNeighbouringHubs;
-	quint8          m_nHops;
-	QString			m_sVendor;
+	EndPoint            m_oNodeAddress;
+	EndPoint            m_oSenderAddress;
+	QUuid               m_oGUID;
+	QUuid               m_oNodeGUID;
+	QList<EndPoint>     m_lNeighbouringHubs;
+	quint8              m_nHops;
+	QString             m_sVendor;
 
-	QueryHitInfo()
-	{
-		m_sVendor = "";
-	}
+	QueryHitInfo() {}
 };
 
-class CQueryHit
+class QueryHit
 {
 public:
-	CQueryHit*      m_pNext;
+	QueryHit*       m_pNext;
 
 	QSharedPointer<QueryHitInfo>   m_pHitInfo;
 
-	QList<CHash>	m_lHashes;
+	HashSet         m_vHashes;
 	QString         m_sDescriptiveName;         // File name
 	QString         m_sURL;                     // http://{IP}:{port}/uri-res/N2R?{URN}
 	QString         m_sMetadata;
@@ -63,21 +60,22 @@ public:
 	bool            m_bIsPartial;
 	quint64         m_nPartialBytesAvailable;
 	QString         m_sPreviewURL;
-
 	bool            m_bIsP2PIMCapable;
 
 public:
-	CQueryHit();
-	CQueryHit(CQueryHit* pHit);
-	~CQueryHit();
+	QueryHit();
+	QueryHit( QueryHit* pHit ); // deep copies hit without m_pNext
+	~QueryHit();
 
-	static QueryHitInfo* readInfo(G2Packet* pPacket, CEndPoint* pSender = 0);
-	static CQueryHit*    readPacket(G2Packet* pPacket, QueryHitInfo* pHitInfo);
+	static QueryHitInfo* readInfo( G2Packet* pPacket, const EndPoint* const pSender = NULL );
+	static QueryHit*     readPacket( G2Packet* pPacket, QueryHitInfo* pHitInfo );
 
 	void resolveURLs();
-	bool isValid(CQuery* pQuery = 0);
+	bool isValid( Query* pQuery = NULL ) const;
 };
 
-typedef QSharedPointer<CQueryHit> QueryHitSharedPtr;
+Q_DECLARE_METATYPE ( QueryHit )
+
+typedef QSharedPointer<QueryHit> QueryHitSharedPtr;
 
 #endif // QUERYHIT_H

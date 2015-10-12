@@ -29,21 +29,21 @@
 
 #include "debug_new.h"
 
-CQueryHashMaster QueryHashMaster;
+QueryHashMaster queryHashMaster;
 
-CQueryHashMaster::CQueryHashMaster()
+QueryHashMaster::QueryHashMaster()
 {
 	m_nPerGroup = 0;
 }
 
-CQueryHashMaster::~CQueryHashMaster()
+QueryHashMaster::~QueryHashMaster()
 {
-	Q_ASSERT(getCount() == 0);
+	Q_ASSERT( getCount() == 0 );
 }
 
-void CQueryHashMaster::create()
+void QueryHashMaster::create()
 {
-	CQueryHashTable::create();
+	QueryHashTable::create();
 
 	m_nPerGroup			= 100;
 	m_bValid			= false;
@@ -51,92 +51,92 @@ void CQueryHashMaster::create()
 	m_nCookie			= 0;
 }
 
-void CQueryHashMaster::add(CQueryHashTable* pTable)
+void QueryHashMaster::add( QueryHashTable* pTable )
 {
-	Q_ASSERT(m_nPerGroup > 0);
-	Q_ASSERT(pTable != 0);
-	Q_ASSERT(pTable->m_nHash > 0);
-	Q_ASSERT(pTable->m_pGroup == 0);
+	Q_ASSERT( m_nPerGroup > 0 );
+	Q_ASSERT( pTable != 0 );
+	Q_ASSERT( pTable->m_nHash > 0 );
+	Q_ASSERT( pTable->m_pGroup == 0 );
 
-	for(QList<CQueryHashGroup*>::iterator itGroup = m_pGroups.begin(); itGroup != m_pGroups.end(); itGroup++)
+	for ( QList<QueryHashGroup*>::iterator itGroup = m_pGroups.begin(); itGroup != m_pGroups.end(); itGroup++ )
 	{
-		CQueryHashGroup* pGroup = *itGroup;
+		QueryHashGroup* pGroup = *itGroup;
 
-		if(pGroup->m_nHash == pTable->m_nHash &&
-				pGroup->getCount() < m_nPerGroup)
+		if ( pGroup->m_nHash == pTable->m_nHash &&
+			 pGroup->getCount() < m_nPerGroup )
 		{
-			pGroup->add(pTable);
+			pGroup->add( pTable );
 			m_bValid = false;
 			return;
 		}
 	}
 
-	CQueryHashGroup* pGroup = new CQueryHashGroup(pTable->m_nHash);
-	m_pGroups.append(pGroup);
-	pGroup->add(pTable);
+	QueryHashGroup* pGroup = new QueryHashGroup( pTable->m_nHash );
+	m_pGroups.append( pGroup );
+	pGroup->add( pTable );
 	m_bValid = false;
 }
 
-void CQueryHashMaster::remove(CQueryHashTable* pTable)
+void QueryHashMaster::remove( QueryHashTable* pTable )
 {
-	Q_ASSERT(pTable != 0);
-	if(pTable->m_pGroup == 0)
+	Q_ASSERT( pTable != 0 );
+	if ( pTable->m_pGroup == 0 )
 	{
 		return;
 	}
 
-	CQueryHashGroup* pGroup = pTable->m_pGroup;
-	pGroup->remove(pTable);
+	QueryHashGroup* pGroup = pTable->m_pGroup;
+	pGroup->remove( pTable );
 
-	if(pGroup->getCount() == 0)
+	if ( pGroup->getCount() == 0 )
 	{
-		int pos = m_pGroups.indexOf(pGroup);
-		Q_ASSERT(pos >= 0);
-		m_pGroups.removeAt(pos);
+		int pos = m_pGroups.indexOf( pGroup );
+		Q_ASSERT( pos >= 0 );
+		m_pGroups.removeAt( pos );
 		delete pGroup;
 	}
 
 	m_bValid = false;
 }
 
-void CQueryHashMaster::build()
+void QueryHashMaster::build()
 {
-	quint32 tNow = time(0);
+	quint32 tNow = time( 0 );
 
-	if(m_bValid)
+	if ( m_bValid )
 	{
-		if(tNow - m_nCookie < 600)
+		if ( tNow - m_nCookie < 600 )
 		{
 			return;
 		}
 	}
 	else
 	{
-		if(tNow - m_nCookie < 20)
+		if ( tNow - m_nCookie < 20 )
 		{
 			return;
 		}
 	}
 
-	ShareManager.m_oSection.lock();
+	shareManager.m_oSection.lock();
 
-	const CQueryHashTable* pLocalTable = ShareManager.getHashTable();
+	const QueryHashTable* pLocalTable = shareManager.getHashTable();
 
-	if(!pLocalTable)
+	if ( !pLocalTable )
 	{
-		ShareManager.m_oSection.unlock();
+		shareManager.m_oSection.unlock();
 		return;
 	}
 
 	clear();
-	merge(pLocalTable);
+	merge( pLocalTable );
 
-	ShareManager.m_oSection.unlock();
+	shareManager.m_oSection.unlock();
 
-	for(QList<CQueryHashGroup*>::iterator itGroup = m_pGroups.begin(); itGroup != m_pGroups.end(); itGroup++)
+	for ( QList<QueryHashGroup*>::iterator itGroup = m_pGroups.begin(); itGroup != m_pGroups.end(); itGroup++ )
 	{
-		CQueryHashGroup* pGroup = *itGroup;
-		merge(pGroup);
+		QueryHashGroup* pGroup = *itGroup;
+		merge( pGroup );
 	}
 
 	m_bValid	= true;

@@ -5,37 +5,38 @@
 #include "Hashes/hash.h"
 #include "FileFragments.hpp"
 
-class CQueryHit;
-class CDownload;
-class CTransfer;
+class QueryHit;
+class Download;
+class Transfer;
 
-class CDownloadSource : public QObject
+class DownloadSource : public QObject
 {
 	Q_OBJECT
 public:
-	CEndPoint			m_oAddress;		// source address
+	EndPoint			m_oAddress;		// source address
 	bool				m_bPush;		// is it a push source?
-	QList<CEndPoint>	m_oPushProxies;	// push proxy, in case we can't connect directly
-	TransferProtocol	m_nProtocol;	// protocol
-	DiscoveryProtocol	m_nNetwork;		// network
+	QList<EndPoint>     m_oPushProxies;	// push proxy, in case we can't connect directly
+	TransferProtocol    m_nProtocol;	// protocol
+	DiscoveryProtocol::Protocol	m_nNetwork;		// network
 	QUuid				m_oGUID;		// source GUID (needed for pushing)
-	QList<CHash>		m_lHashes;		// list of hashes
-	time_t				m_tNextAccess;	// seconds since 1970
+
+	HashSet          m_vHashes;		// list of hashes
+	quint32				m_tNextAccess;	// seconds since 1970
 	quint32				m_nFailures;	// number of failures
 	QString				m_sURL;			// URL
 
-	CDownload*			m_pDownload;
-	CTransfer*			m_pTransfer;
+	Download*			m_pDownload;
+	Transfer*			m_pTransfer;
 
 	Fragments::List		m_lAvailableFrags;
 	Fragments::List		m_lDownloadedFrags;
 public:
-	CDownloadSource(CDownload* pDownload, QObject* parent = 0);
-	CDownloadSource(CDownload* pDownload, CQueryHit* pHit, QObject* parent = 0);
-	virtual ~CDownloadSource();
+	DownloadSource( Download* pDownload, QObject* parent = 0 );
+	DownloadSource( Download* pDownload, QueryHit* pHit, QObject* parent = 0 );
+	virtual ~DownloadSource();
 
 public slots:
-	CTransfer*  createTransfer();
+	Transfer*  createTransfer();
 	void		closeTransfer();
 
 public:
@@ -45,21 +46,21 @@ public:
 signals:
 	void transferCreated();
 	void transferClosed();
-	void bytesReceived(quint64, quint64); // offset, length
+	void bytesReceived( quint64, quint64 ); // offset, length
 };
 
-Q_DECLARE_METATYPE(CDownloadSource*)
+Q_DECLARE_METATYPE( DownloadSource* )
 
-bool CDownloadSource::canAccess()
+bool DownloadSource::canAccess()
 {
-	return time(0) > m_tNextAccess;
+	return time( 0 ) > m_tNextAccess;
 }
-bool CDownloadSource::hasTransfer()
+bool DownloadSource::hasTransfer()
 {
-	return (m_pTransfer != 0);
+	return ( m_pTransfer != 0 );
 }
 
-QDataStream& operator<<(QDataStream& s, const CDownloadSource& rhs);
-QDataStream& operator>>(QDataStream& s, CDownloadSource& rhs);
+QDataStream& operator<<( QDataStream& s, const DownloadSource& rhs );
+QDataStream& operator>>( QDataStream& s, DownloadSource& rhs );
 
 #endif // DOWNLOADSOURCE_H

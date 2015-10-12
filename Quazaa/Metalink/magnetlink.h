@@ -7,36 +7,34 @@
 
 #include "download.h"
 
-class CHash;
-
 namespace URI
 {
 
-class CMagnet
+class Magnet
 {
 public:
 
 	// internal storage structure
 	struct MediaURL
 	{
-		QUrl	m_oURL;
-		quint8	m_nPriority;		// 255: highest priority; 1: lowest priority; 0: temporary disabled
+		QUrl    m_oURL;
+		quint8  m_nPriority;		// 255: highest priority; 1: lowest priority; 0: temporary disabled
 	};
 
 	// internal storage structure
 	struct MagnetFile
 	{
-		bool			m_bNull;
-		quint64			m_nFileSize;
-		QString			m_sFileName;
-		QList<CHash*>	m_lHashes;		// Includes all hashes provided via <hash> tag.
-		QList<MediaURL>	m_lURLs;		// Includes http, https, ftp, ftps, etc.
-		QList<QUrl>		m_lTrackers;	// BitTorrent Trackers for this file
+		bool            m_bNull;
+		quint64         m_nFileSize;
+		QString         m_sFileName;
+		HashSet      m_vHashes;      // Includes all hashes provided via <hash> tag.
+		QList<MediaURL> m_lURLs;        // Includes http, https, ftp, ftps, etc.
+		QList<QUrl>     m_lTrackers;    // BitTorrent Trackers for this file
 
-		MagnetFile();	   // Creates an empty MagnetFile. Note that m_bNull needs to be handled manually.
+		MagnetFile();   // Creates an empty MagnetFile. Note that m_bNull needs to be handled manually.
 		~MagnetFile();
 		bool isNull() const;
-		bool isValid() const;// Returns true if file struct contains enough data to initialize a download.
+		bool isValid() const; // Returns true if file struct contains enough data to initialize a download.
 	};
 
 private:
@@ -47,29 +45,29 @@ private:
 	QList<QString>		m_lSearches;		// Contains all files sorted by ID.
 
 public:
-	CMagnet();
-	CMagnet(QString sMagnet);
+	Magnet();
+	Magnet( QString sMagnet );
 
 	/**
 	  * Returns File struct for ID. Remember to verify their validity with isNull().
 	  */
-	MagnetFile operator[](const quint16 nID) const;
+	MagnetFile operator[]( const quint16 nID ) const;
 
 	/**
 	  * Returns true if Magnet link could be parsed without errors.
 	  */
-	bool parseMagnet(QString sMagnet);
+	bool parseMagnet( QString sMagnet );
 
 	/**
 	  * Inserts the information for ID into the download passed as parameter. If NULL is passed, a
 	  * new download is created.
 	  */
-	bool file(const quint16 nID, CDownload* pDownload) const;
+	bool file( const quint16 nID, Download* pDownload ) const;
 
 	/**
 	  * Returns search string by ID. Returns empty strings for invalid IDs.
 	  */
-	QString search(const quint16 nID) const;
+	QString search( const quint16 nID ) const;
 
 	/**
 	  * Returns true for magnets that have been created using the default constructor without having
@@ -98,30 +96,30 @@ public:
 	inline QString toString() const;
 
 private:
-	void subsectionError(QString sParam, QString sSubsection);
+	void subsectionError( QString sParam, QString sSubsection );
 };
 
-bool CMagnet::isNull() const
+bool Magnet::isNull() const
 {
 	return m_bNull;
 }
 
-bool CMagnet::isValid() const
+bool Magnet::isValid() const
 {
 	return m_lFiles.size() || m_lSearches.size();
 }
 
-int CMagnet::fileCount() const
+int Magnet::fileCount() const
 {
 	return m_lFiles.size();
 }
 
-int CMagnet::searchCount() const
+int Magnet::searchCount() const
 {
 	return m_lSearches.size();
 }
 
-QString CMagnet::toString() const
+QString Magnet::toString() const
 {
 	return m_sMagnet;
 }

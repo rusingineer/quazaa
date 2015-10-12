@@ -31,97 +31,107 @@
 
 #include "debug_new.h"
 
-CTransfers Transfers;
-CThread TransfersThread;
+Transfers transfers;
+CThread transfersThread;
 
-CTransfers::CTransfers(QObject* parent)
-	: QObject(parent),
-	  m_bActive(false)
+Transfers::Transfers( QObject* parent )
+	: QObject( parent ),
+	  m_bActive( false )
 {
-	m_pController = new CRateController(&m_pSection);
+	m_pController = new RateController( &m_pSection );
 }
 
-CTransfers::~CTransfers()
+Transfers::~Transfers()
 {
 	delete m_pController;
 }
 
-void CTransfers::start()
+void Transfers::start()
 {
-	if( m_bActive )
+	m_pSection.lock();
+	if ( m_bActive )
+	{
+		m_pSection.unlock();
 		return;
+	}
 
-	systemLog.postLog(LogSeverity::Notice, qPrintable(tr("Starting transfers...")));
+	systemLog.postLog( LogSeverity::Notice, qPrintable( tr( "Starting transfers..." ) ) );
 
 	m_bActive = true;
-	TransfersThread.start("Transfers", &m_pSection);
-	m_pController->moveToThread(&TransfersThread);
-	Downloads.start();
-	Downloads.moveToThread(&TransfersThread);
+	transfersThread.start( "Transfers", &m_pSection );
+	m_pController->moveToThread( &transfersThread );
+	downloads.start();
+	downloads.moveToThread( &transfersThread );
 
-	connect(&m_oTimer, SIGNAL(timeout()), this, SLOT(onTimer()));
-	connect(&m_oTimer, SIGNAL(timeout()), &Downloads, SLOT(onTimer()));
-	m_oTimer.start(1000);
+	connect( &m_oTimer, SIGNAL( timeout() ), this, SLOT( onTimer() ) );
+	connect( &m_oTimer, SIGNAL( timeout() ), &downloads, SLOT( onTimer() ) );
+	m_oTimer.start( 1000 );
+
+	m_pSection.unlock();
 }
 
-void CTransfers::stop()
+void Transfers::stop()
 {
-	if( !m_bActive )
+	if ( !m_bActive )
+	{
 		return;
+	}
 
-	systemLog.postLog(LogSeverity::Notice, qPrintable(tr("Stopping transfers...")));
+	systemLog.postLog( LogSeverity::Notice, qPrintable( tr( "Stopping transfers..." ) ) );
 
 	m_bActive = false;
 
-	TransfersThread.exit(0);
-	Downloads.stop();
+	transfersThread.exit( 0, true );
+	downloads.stop();
 }
 
-void CTransfers::add(CTransfer *pTransfer)
+void Transfers::add( Transfer* pTransfer )
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	Q_ASSERT_X(m_bActive, "CTransfers::add()", "Adding transfer while thread is inactive");
+	Q_ASSERT_X( m_bActive, "CTransfers::add()", "Adding transfer while thread is inactive" );
 
-	if( m_lTransfers.contains(pTransfer->m_pOwner, pTransfer) )
+	if ( m_lTransfers.contains( pTransfer->m_pOwner, pTransfer ) )
 	{
 		// TODO: Add new sources if transfer already exists
-		systemLog.postLog(LogSeverity::Debug, "CTransfers::add(): transfer already added!");
+		systemLog.postLog( LogSeverity::Debug, "CTransfers::add(): transfer already added!" );
 		return;
 	}
 
-	m_lTransfers.insert(pTransfer->m_pOwner, pTransfer);
-	m_pController->addSocket(pTransfer);
+	m_lTransfers.insert( pTransfer->m_pOwner, pTransfer );
+	m_pController->addSocket( pTransfer );
 	// start
 }
 
-void CTransfers::remove(CTransfer *pTransfer)
+void Transfers::remove( Transfer* pTransfer )
 {
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	if(!m_lTransfers.contains(pTransfer->m_pOwner, pTransfer))
+	if ( !m_lTransfers.contains( pTransfer->m_pOwner, pTransfer ) )
 	{
-		systemLog.postLog(LogSeverity::Debug, "CTransfers::remove(): removing non-existing transfer!");
+		systemLog.postLog( LogSeverity::Debug, "CTransfers::remove(): removing non-existing transfer!" );
 		return;
 	}
 
-	m_pController->removeSocket(pTransfer);
-	m_lTransfers.remove(pTransfer->m_pOwner, pTransfer);
+	m_pController->removeSocket( pTransfer );
+	m_lTransfers.remove( pTransfer->m_pOwner, pTransfer );
 }
 
-QList<CTransfer *> CTransfers::getByOwner(void *pOwner)
+QList<Transfer*> Transfers::getByOwner( void* pOwner )
 {
-	return m_lTransfers.values(pOwner);
+	return m_lTransfers.values( pOwner );
 }
 
-void CTransfers::onTimer()
+void Transfers::onTimer()
 {
-	if(!m_bActive || m_lTransfers.isEmpty())
+	if ( !m_bActive || m_lTransfers.isEmpty() )
+	{
 		return;
+	}
 
-	QMutexLocker l(&m_pSection);
+	QMutexLocker l( &m_pSection );
 
-	foreach(CTransfer* pTransfer, m_lTransfers)
+	foreach ( Transfer * pTransfer, m_lTransfers )
 	{
 		pTransfer->onTimer();
 	}

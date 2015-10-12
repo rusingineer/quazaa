@@ -1,7 +1,7 @@
 ﻿/*
 ** $Id$
 **
-** Copyright © Quazaa Development Team, 2009-2013.
+** Copyright © Quazaa Development Team, 2009-2014.
 ** This file is part of QUAZAA (quazaa.sourceforge.net)
 **
 ** Quazaa is free software; this file may be used under the terms of the GNU
@@ -22,6 +22,10 @@
 ** Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#include <QMenu>
+#include <QKeyEvent>
+#include <QFileDialog>
+
 #include "widgetsecurity.h"
 #include "ui_widgetsecurity.h"
 
@@ -33,14 +37,9 @@
 #include "quazaasettings.h"
 #include "skinsettings.h"
 
-#include "timedsignalqueue.h"
-
 #include "debug_new.h"
 
-#include <QMenu>
-#include <QKeyEvent>
-
-CWidgetSecurity::CWidgetSecurity(QWidget* parent) :
+CWidgetSecurity::CWidgetSecurity( QWidget* parent ) :
 	QMainWindow( parent ),
 	ui( new Ui::CWidgetSecurity )
 {
@@ -53,37 +52,43 @@ CWidgetSecurity::CWidgetSecurity(QWidget* parent) :
 
 	restoreState( quazaaSettings.WinMain.SecurityToolbars );
 
-	tableViewSecurity = new CTableView();
-	tableViewSecurity->verticalHeader()->setVisible( false );
-	ui->verticalLayoutManual->addWidget(tableViewSecurity);
+	m_pTableViewSecurity = new CTableView();
+	ui->verticalLayoutManual->addWidget( m_pTableViewSecurity );
 
-	connect(tableViewSecurity, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(tableViewSecurity_customContextMenuRequested(QPoint)));
-	connect(tableViewSecurity, SIGNAL(clicked(QModelIndex)), this, SLOT(tableViewSecurity_clicked(QModelIndex)));
-	connect(tableViewSecurity, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(tableViewSecurity_doubleClicked(QModelIndex)));
+	connect( m_pTableViewSecurity, SIGNAL( customContextMenuRequested( QPoint ) ), this,
+			 SLOT( tableViewSecurity_customContextMenuRequested( QPoint ) ) );
+	connect( m_pTableViewSecurity, SIGNAL( clicked( QModelIndex ) ), this,
+			 SLOT( tableViewSecurity_clicked( QModelIndex ) ) );
+	connect( m_pTableViewSecurity, SIGNAL( doubleClicked( QModelIndex ) ), this,
+			 SLOT( tableViewSecurity_doubleClicked( QModelIndex ) ) );
 
-	tableViewSecurityAuto = new CTableView();
-	tableViewSecurityAuto->verticalHeader()->setVisible( false );
-	ui->verticalLayoutAuto->addWidget(tableViewSecurityAuto);
+	m_pTableViewSecurityAuto = new CTableView();
+	ui->verticalLayoutAuto->addWidget( m_pTableViewSecurityAuto );
 
-	connect(tableViewSecurityAuto, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(tableViewSecurityAuto_customContextMenuRequested(QPoint)));
-	connect(tableViewSecurityAuto, SIGNAL(clicked(QModelIndex)), this, SLOT(tableViewSecurity_clicked(QModelIndex)));
-	connect(tableViewSecurityAuto, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(tableViewSecurity_doubleClicked(QModelIndex)));
+	connect( m_pTableViewSecurityAuto, SIGNAL( customContextMenuRequested( QPoint ) ), this,
+			 SLOT( tableViewSecurityAuto_customContextMenuRequested( QPoint ) ) );
+	connect( m_pTableViewSecurityAuto, SIGNAL( clicked( QModelIndex ) ), this,
+			 SLOT( tableViewSecurity_clicked( QModelIndex ) ) );
+	connect( m_pTableViewSecurityAuto, SIGNAL( doubleClicked( QModelIndex ) ), this,
+			 SLOT( tableViewSecurity_doubleClicked( QModelIndex ) ) );
 
-	tableViewSecurity->horizontalHeader()->restoreState(quazaaSettings.WinMain.SecurityManualHeader);
-	tableViewSecurityAuto->horizontalHeader()->restoreState(quazaaSettings.WinMain.SecurityAutomaticHeader);
+	m_pTableViewSecurity->horizontalHeader()->restoreState( quazaaSettings.WinMain.SecurityManualHeader );
+	m_pTableViewSecurityAuto->horizontalHeader()->restoreState( quazaaSettings.WinMain.SecurityAutomaticHeader );
 
-	m_lSecurity = new CSecurityTableModel( this );
+	m_lSecurity = new SecurityTableModel( this );
 
-	m_lManual = new SecurityFilterModel(m_lSecurity, false);
-	m_lAutomatic = new SecurityFilterModel(m_lSecurity, true);
+	m_lManual = new SecurityFilterModel( m_lSecurity, false );
+	m_lAutomatic = new SecurityFilterModel( m_lSecurity, true );
 
-	tableViewSecurity->setModel( m_lManual );
-	tableViewSecurityAuto->setModel( m_lAutomatic );
-	m_lManual->sort( tableViewSecurity->horizontalHeader()->sortIndicatorSection(),
-							tableViewSecurity->horizontalHeader()->sortIndicatorOrder()    );
-	m_lAutomatic->sort( tableViewSecurityAuto->horizontalHeader()->sortIndicatorSection(),
-							tableViewSecurityAuto->horizontalHeader()->sortIndicatorOrder()    );
+	m_pTableViewSecurity->setModel( m_lManual );
+	m_pTableViewSecurityAuto->setModel( m_lAutomatic );
+	m_lManual->sort( m_pTableViewSecurity->horizontalHeader()->sortIndicatorSection(),
+					 m_pTableViewSecurity->horizontalHeader()->sortIndicatorOrder()    );
+	m_lAutomatic->sort( m_pTableViewSecurityAuto->horizontalHeader()->sortIndicatorSection(),
+						m_pTableViewSecurityAuto->horizontalHeader()->sortIndicatorOrder()    );
 	setSkin();
+
+	ui->actionSecurityExportRules->setEnabled( true );
 }
 
 CWidgetSecurity::~CWidgetSecurity()
@@ -94,11 +99,11 @@ CWidgetSecurity::~CWidgetSecurity()
 void CWidgetSecurity::saveWidget()
 {
 	quazaaSettings.WinMain.SecurityToolbars = saveState();
-	quazaaSettings.WinMain.SecurityManualHeader = tableViewSecurity->horizontalHeader()->saveState();
-	quazaaSettings.WinMain.SecurityAutomaticHeader = tableViewSecurityAuto->horizontalHeader()->saveState();
+	quazaaSettings.WinMain.SecurityManualHeader = m_pTableViewSecurity->horizontalHeader()->saveState();
+	quazaaSettings.WinMain.SecurityAutomaticHeader = m_pTableViewSecurityAuto->horizontalHeader()->saveState();
 }
 
-void CWidgetSecurity::changeEvent(QEvent* e)
+void CWidgetSecurity::changeEvent( QEvent* e )
 {
 	switch ( e->type() )
 	{
@@ -115,7 +120,7 @@ void CWidgetSecurity::changeEvent(QEvent* e)
 	QMainWindow::changeEvent( e );
 }
 
-void CWidgetSecurity::keyPressEvent(QKeyEvent *e)
+void CWidgetSecurity::keyPressEvent( QKeyEvent* e )
 {
 	switch ( e->key() )
 	{
@@ -141,120 +146,130 @@ void CWidgetSecurity::keyPressEvent(QKeyEvent *e)
 	QMainWindow::keyPressEvent( e );
 }
 
-void CWidgetSecurity::update()
+QModelIndexList CWidgetSecurity::getSelectedItems( SecurityFilterModel*& pFilterModel ) const
 {
-	m_lSecurity->updateAll();
+	CTableView* pTableView = NULL;
+	return getSelectedItems( pFilterModel, pTableView );
+}
+
+QModelIndexList CWidgetSecurity::getSelectedItems( SecurityFilterModel*& pFilterModel,
+												   CTableView*& pTableView ) const
+{
+	if ( ui->tabWidgetSecurity->currentIndex() == 1 )
+	{
+		pFilterModel = m_lAutomatic;
+		pTableView   = m_pTableViewSecurityAuto;
+	}
+	else
+	{
+		pFilterModel = m_lManual;
+		pTableView   = m_pTableViewSecurity;
+	}
+
+	return pTableView->selectionModel()->selectedRows();
 }
 
 void CWidgetSecurity::on_actionSecurityAddRule_triggered()
 {
-	CDialogModifyRule* dlgAddRule = new CDialogModifyRule( this );
-	connect(dlgAddRule, SIGNAL(accepted()), SLOT(update()));
+	DialogModifyRule* dlgAddRule = new DialogModifyRule( this );
+	// connect(dlgAddRule, SIGNAL(accepted()), SLOT(update())); // not required
 	dlgAddRule->show();
 }
 
 void CWidgetSecurity::on_actionSecurityRemoveRule_triggered()
 {
-	if (ui->tabWidgetSecurity->currentIndex() == 1) {
-		QModelIndexList selection = tableViewSecurityAuto->selectionModel()->selectedRows();
+	SecurityFilterModel* pModel = NULL;
+	QModelIndexList lSelection  = getSelectedItems( pModel );
 
-		foreach( QModelIndex i, selection )
+	foreach ( const QModelIndex& i, lSelection )
+	{
+		if ( i.isValid() )
 		{
-			if ( i.isValid() )
-			{
-				CSecureRule* pRule = m_lSecurity->ruleFromIndex( m_lAutomatic->mapToSource(i) );
-				m_lSecurity->removeRule( pRule );
-			}
-		}
-	} else {
-		QModelIndexList selection = tableViewSecurity->selectionModel()->selectedRows();
-
-		foreach( QModelIndex i, selection )
-		{
-			if ( i.isValid() )
-			{
-				CSecureRule* pRule = m_lSecurity->ruleFromIndex( m_lManual->mapToSource(i) );
-				m_lSecurity->removeRule( pRule );
-			}
+			// map filter model index to table model index and request rule removal
+			m_lSecurity->triggerRuleRemoval( pModel->mapToSource( i ).row() );
 		}
 	}
 }
 
 void CWidgetSecurity::on_actionSecurityModifyRule_triggered()
 {
-	if (ui->tabWidgetSecurity->currentIndex() == 1) {
-		QModelIndexList selection = tableViewSecurityAuto->selectionModel()->selectedRows();
-		QModelIndex index = QModelIndex();
+	SecurityFilterModel* pModel = NULL;
+	QModelIndexList lSelection  = getSelectedItems( pModel );
 
-		// Get the highest selected row.
-		foreach( QModelIndex i, selection )
+	QModelIndex index = QModelIndex();
+
+	// Get the highest selected row.
+	foreach ( const QModelIndex & i, lSelection )
+	{
+		if ( index.isValid() )
 		{
-			if ( index.isValid() )
-			{
-				if ( index.row() > i.row() )
-					index = i;
-			}
-			else
+			if ( index.row() > i.row() )
 			{
 				index = i;
 			}
 		}
-
-		if ( index.isValid() )
+		else
 		{
-			CSecureRule* pRule = m_lSecurity->ruleFromIndex( m_lAutomatic->mapToSource(index) );
-			CDialogModifyRule* dlgAddRule = new CDialogModifyRule( this, pRule );
-			connect(dlgAddRule, SIGNAL(accepted()), SLOT(update()));
-
-			dlgAddRule->show();
+			index = i;
 		}
-	} else {
-		QModelIndexList selection = tableViewSecurity->selectionModel()->selectedRows();
-		QModelIndex index = QModelIndex();
+	}
 
-		// Get the highest selected row.
-		foreach( QModelIndex i, selection )
-		{
-			if ( index.isValid() )
-			{
-				if ( index.row() > i.row() )
-					index = i;
-			}
-			else
-			{
-				index = i;
-			}
-		}
+	if ( index.isValid() )
+	{
+		QModelIndex i = pModel->mapToSource( index );
 
-		if ( index.isValid() )
-		{
-			CSecureRule* pRule = m_lSecurity->ruleFromIndex( m_lManual->mapToSource(index) );
-			CDialogModifyRule* dlgAddRule = new CDialogModifyRule( this, pRule );
-			connect(dlgAddRule, SIGNAL(accepted()), SLOT(update()));
+		Q_ASSERT( i.isValid()  &&
+				  i.row() >= 0 &&
+				  i.row() < m_lSecurity->rowCount() );
 
-			dlgAddRule->show();
-		}
+		SecurityTableModel::RuleData* pData = m_lSecurity->dataFromRow( i.row() );
+		Q_ASSERT( pData );
+
+		Rule* pRule = pData->rule()->getCopy();
+		DialogModifyRule* dlgModifyRule = new DialogModifyRule( this, pRule );
+		dlgModifyRule->show();
 	}
 }
 
 void CWidgetSecurity::on_actionSecurityImportRules_triggered()
 {
-	CDialogImportSecurity* dlgImportSecurity = new CDialogImportSecurity(this);
+	DialogImportSecurity* dlgImportSecurity = new DialogImportSecurity( this );
 	dlgImportSecurity->exec();
 }
 
 void CWidgetSecurity::on_actionSecurityExportRules_triggered()
 {
-	// TODO: Implement.
+	Security::IDSet lsIDs;
+
+	SecurityFilterModel* pModel = NULL;
+	QModelIndexList lSelection  = getSelectedItems( pModel );
+
+	foreach ( const QModelIndex& iProxy, lSelection )
+	{
+		if ( iProxy.isValid() )
+		{
+			// map filter model index to table model index and store ID
+			const QModelIndex iSourceIndex = pModel->mapToSource( iProxy );
+			const int nRow = iSourceIndex.row();
+			const SecurityTableModel::RuleData* pData = m_lSecurity->dataFromRow( nRow );
+			lsIDs.insert( pData->m_nID );
+		}
+	}
+
+	QString sPath = QFileDialog::getSaveFileName( this, tr( "Export Security Rules" ), QString(),
+												  tr( "Security XML files (*.xml)" ) );
+
+	securityManager.toXML( sPath, lsIDs );
 }
 
 void CWidgetSecurity::on_actionSubscribeSecurityList_triggered()
 {
-	CDialogSecuritySubscriptions* dlgSecuritySubscriptions = new CDialogSecuritySubscriptions( this );
+	CDialogSecuritySubscriptions* dlgSecuritySubscriptions =
+			new CDialogSecuritySubscriptions( this );
 	dlgSecuritySubscriptions->show();
 }
 
-void CWidgetSecurity::tableViewSecurity_doubleClicked(const QModelIndex& index)
+void CWidgetSecurity::tableViewSecurity_doubleClicked( const QModelIndex& index )
 {
 	if ( index.isValid() )
 	{
@@ -268,7 +283,7 @@ void CWidgetSecurity::tableViewSecurity_doubleClicked(const QModelIndex& index)
 	}
 }
 
-void CWidgetSecurity::tableViewSecurity_clicked(const QModelIndex& index)
+void CWidgetSecurity::tableViewSecurity_clicked( const QModelIndex& index )
 {
 	if ( index.isValid() )
 	{
@@ -286,13 +301,13 @@ void CWidgetSecurity::tableViewSecurity_clicked(const QModelIndex& index)
 
 void CWidgetSecurity::setSkin()
 {
-	tableViewSecurity->setStyleSheet( skinSettings.listViews );
-	tableViewSecurityAuto->setStyleSheet( skinSettings.listViews );
+	m_pTableViewSecurity->setStyleSheet( skinSettings.listViews );
+	m_pTableViewSecurityAuto->setStyleSheet( skinSettings.listViews );
 }
 
-void CWidgetSecurity::tableViewSecurity_customContextMenuRequested(const QPoint &pos)
+void CWidgetSecurity::tableViewSecurity_customContextMenuRequested( const QPoint& pos )
 {
-	QModelIndex index = tableViewSecurity->indexAt( pos );
+	QModelIndex index = m_pTableViewSecurity->indexAt( pos );
 
 	if ( index.isValid() )
 	{
@@ -310,9 +325,9 @@ void CWidgetSecurity::tableViewSecurity_customContextMenuRequested(const QPoint 
 	m_pSecurityMenu->popup( QCursor::pos() );
 }
 
-void CWidgetSecurity::tableViewSecurityAuto_customContextMenuRequested(const QPoint &pos)
+void CWidgetSecurity::tableViewSecurityAuto_customContextMenuRequested( const QPoint& pos )
 {
-	QModelIndex index = tableViewSecurityAuto->indexAt( pos );
+	QModelIndex index = m_pTableViewSecurityAuto->indexAt( pos );
 
 	if ( index.isValid() )
 	{

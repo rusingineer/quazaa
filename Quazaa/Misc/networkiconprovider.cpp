@@ -27,83 +27,113 @@
 
 #include "networkiconprovider.h"
 
-CNetworkIconProvider::CNetworkIconProvider()
+NetworkIconProvider::NetworkIconProvider()
 {
 }
 
-QIcon CNetworkIconProvider::icon(DiscoveryProtocol protocol)
+QIcon NetworkIconProvider::icon( DiscoveryProtocol::Protocol protocol )
 {
 	QIcon icon;
-	QString key = QLatin1String("nip_dp_") + QString::number(protocol);
+	QString key = QLatin1String( "nip_dp_" ) + QString::number( protocol );
 
 	QPixmap pixIcon;
-	if( QPixmapCache::find(key, pixIcon) )
+	if ( QPixmapCache::find( key, pixIcon ) )
 	{
 		// pixIcon internally uses shared data to avoid needless copying.
-		icon.addPixmap(pixIcon);
+		icon.addPixmap( pixIcon );
 		return icon;
 	}
 
-	switch(protocol)
+	switch ( protocol )
 	{
-	case dpNull:
+	case DiscoveryProtocol::None:
 		break;
-	case dpG2:
-		pixIcon.load(":/Resource/Networks/Gnutella2.png");
+	case DiscoveryProtocol::G2:
+		pixIcon.load( ":/Resource/Networks/Gnutella2.png" );
 		break;
-	case dpGnutella:
-		pixIcon.load(":/Resource/Networks/Gnutella2.png");
+	case DiscoveryProtocol::Gnutella:
+		pixIcon.load( ":/Resource/Networks/Gnutella2.png" );
 		break;
-	case dpAres:
-		pixIcon.load(":/Resource/Networks/Ares.png");
+	case DiscoveryProtocol::Ares:
+		pixIcon.load( ":/Resource/Networks/Ares.png" );
 		break;
-	case dpeDonkey2000:
-		pixIcon.load(":/Resource/Networks/EDonkey.png");
+	case DiscoveryProtocol::eDonkey2000:
+		pixIcon.load( ":/Resource/Networks/EDonkey.png" );
 		break;
 	}
 
-	if(pixIcon.isNull())
+	if ( pixIcon.isNull() )
+	{
 		return QIcon();
+	}
 
-	icon.addPixmap(pixIcon);
+	icon.addPixmap( pixIcon );
 
 	// Default cache size: 2048 KB on embedded platforms, 10240 KB on desktop platforms
-	QPixmapCache::insert(key, pixIcon);
+	QPixmapCache::insert( key, pixIcon );
 
 	return icon;
 }
 
-QIcon CNetworkIconProvider::icon(TransferProtocol protocol)
+QIcon NetworkIconProvider::icon( TransferProtocol protocol )
 {
 	QIcon icon;
-	QString key = QLatin1String("nip_tp_") + QString::number(protocol);
+	QString key = QLatin1String( "nip_tp_" ) + QString::number( protocol );
 
 	QPixmap pixIcon;
-	if( QPixmapCache::find(key, pixIcon) )
+	if ( QPixmapCache::find( key, pixIcon ) )
 	{
 		// pixIcon internally uses shared data to avoid needless copying.
-		icon.addPixmap(pixIcon);
+		icon.addPixmap( pixIcon );
 		return icon;
 	}
 
-	switch(protocol)
+	switch ( protocol )
 	{
 	case tpNull:
 		break;
 	case tpHTTP:
-		pixIcon.load(":/Resource/Networks/http.png");
+		pixIcon.load( ":/Resource/Networks/http.png" );
 		break;
 	case tpBitTorrent:
-		pixIcon.load(":/Resource/Networks/BitTorrent.png");
+		pixIcon.load( ":/Resource/Networks/BitTorrent.png" );
 	}
 
-	if(pixIcon.isNull())
+	if ( pixIcon.isNull() )
+	{
 		return QIcon();
+	}
 
-	icon.addPixmap(pixIcon);
+	icon.addPixmap( pixIcon );
 
 	// Default cache size: 2048 KB on embedded platforms, 10240 KB on desktop platforms
-	QPixmapCache::insert(key, pixIcon);
+	QPixmapCache::insert( key, pixIcon );
+
+	return icon;
+}
+
+QIcon NetworkIconProvider::icon( const QString& sCountryCode )
+{
+	QIcon icon;
+	QPixmap pixIcon;
+	if ( QPixmapCache::find( sCountryCode, pixIcon ) )
+	{
+		// pixIcon internally uses shared data to avoid needless copying.
+		icon.addPixmap( pixIcon );
+		return icon;
+	}
+
+	pixIcon.load( ":/Resource/Flags/" + sCountryCode.toLower() + ".png" );
+
+	if ( pixIcon.isNull() )
+	{
+		return QIcon();
+	}
+
+	icon.addPixmap( pixIcon );
+
+	// Default cache size: 2048 KB on embedded platforms, 10240 KB on desktop platforms
+	QPixmapCache::insert( sCountryCode, pixIcon );
 
 	return icon;
 }

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>CWidgetSearch</class>
- <widget class="QWidget" name="CWidgetSearch">
+ <class>WidgetSearch</class>
+ <widget class="QWidget" name="WidgetSearch">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>647</width>
-    <height>392</height>
+    <width>189</width>
+    <height>522</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -76,8 +76,8 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>629</width>
-            <height>526</height>
+            <width>184</width>
+            <height>522</height>
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout_19">

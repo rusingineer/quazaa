@@ -47,69 +47,82 @@ public:
 public:
 	TCPBandwidthMeter();
 
-	void	Add(quint32 nBytes);
-	quint32	AvgUsage();
-	quint32 Usage();
+	void	add( quint32 nBytes );
+	quint32	avgUsage();
+	quint32 usage();
 
 };
 
-class CNetworkConnection : public QObject
+class NetworkConnection : public QObject
 {
 	Q_OBJECT
-public:
-	QTcpSocket* m_pSocket;  // Socket ;)
-
-	// Host Address
-	CEndPoint   m_oAddress;
-
-	// Buffer I/O
-	CBuffer* m_pInput;
-	CBuffer* m_pOutput;
-
-	bool    m_bInitiated;
-	bool    m_bConnected;
-	qint32  m_tConnected;
-
-public:
-	CNetworkConnection(QObject* parent = 0);
-	virtual ~CNetworkConnection();
-	void moveToThread(QThread* thread);
-
-public:
-	virtual void connectTo(CEndPoint oAddress);
-	virtual void attachTo(CNetworkConnection* pOther);
-	virtual void acceptFrom(qintptr nHandle);
-	virtual void close(bool bDelayed = false);
 
 private:
-	Q_INVOKABLE void closeImplementation(bool bDelayed);
+	QTcpSocket* m_pSocket;
+
+protected:
+	// Host Address
+	EndPoint    m_oAddress;
+
+	// Buffer I/O
+	Buffer* m_pInput;
+	Buffer* m_pOutput;
+
+	bool    m_bInitiated; // true if we initiated the connection; false otherwise
+	bool    m_bConnected; // TODO: this is never set to true for connections initiatied by us.
+	quint32 m_tConnected;
 
 public:
-	void write(QByteArray& baData)
+	NetworkConnection( QObject* parent = NULL );
+	virtual ~NetworkConnection();
+	void moveToThread( QThread* thread );
+
+public:
+	virtual void connectTo( EndPoint oAddress );
+	virtual void attachTo( NetworkConnection* pOther );
+	virtual void acceptFrom( qintptr nHandle );
+	virtual void close( bool bDelayed = false );
+
+private:
+	Q_INVOKABLE void closeImplementation( bool bDelayed );
+
+public:
+	void write( QByteArray& baData )
 	{
-		write(baData.constData(), baData.size());
+		write( baData.constData(), baData.size() );
 	}
 
-	inline void write(const char* szData, quint32 nLength)
+	inline void write( const char* szData, quint32 nLength )
 	{
-		writeData(szData, nLength);
+		writeData( szData, nLength );
 	}
 
-	inline qint64 read(char* pData, qint64 nMaxSize = 0)
+	inline qint64 read( char* pData, qint64 nMaxSize = 0 )
 	{
-		return readData(pData, nMaxSize);
+		return readData( pData, nMaxSize );
 	}
 
-	QByteArray read(qint64 nMaxSize = 0);
-	QByteArray peek(qint64 nMaxLength = 0);
+	/**
+	 * @brief read reads and removes the first nMaxSize bytes from the buffer.
+	 * @param nMaxSize : the number of bytes
+	 * @return the data
+	 */
+	QByteArray read( qint64 nMaxSize = 0 );
+
+	/**
+	 * @brief peek allows access to the first nMaxLength bytes available in the buffer.
+	 * @param nMaxLength : the number of bytes; if <= 0, all of them
+	 * @return the data
+	 */
+	QByteArray peek( qint64 nMaxLength = 0 );
 
 protected:
-	virtual qint64 readFromNetwork(qint64 nBytes);
-	virtual qint64 writeToNetwork(qint64 nBytes);
+	virtual qint64 readFromNetwork( qint64 nBytes );
+	virtual qint64 writeToNetwork( qint64 nBytes );
 
 protected:
-	virtual qint64 readData(char* data, qint64 maxlen);
-	virtual qint64 writeData(const char* data, qint64 len);
+	virtual qint64 readData( char* data, qint64 maxlen );
+	virtual qint64 writeData( const char* data, qint64 len );
 
 	void initializeSocket();
 
@@ -119,29 +132,46 @@ public:
 	qint64 bytesToWrite() const;
 	qint64 networkBytesAvailable() const;
 	bool isValid() const;
-	void setReadBufferSize(qint64 nSize);
+	void setReadBufferSize( qint64 nSize );
 
-	inline CEndPoint address() const
+	inline const EndPoint& address() const
 	{
 		return m_oAddress;
 	}
 
+	inline bool initiatedByUs() const
+	{
+		return m_bInitiated;
+	}
+
+	inline bool isConnected() const
+	{
+		return m_bConnected;
+	}
+
+	inline quint32 connectTime() const
+	{
+		return m_tConnected;
+	}
+
+	QString errorString() const;
+
 	inline virtual bool hasData()
 	{
-		if(!m_pSocket)
+		if ( !m_pSocket )
 		{
 			return false;
 		}
 
-		if(m_pInput && !m_pInput->isEmpty())
+		if ( m_pInput && !m_pInput->isEmpty() )
 		{
 			return true;
 		}
-		if(m_pOutput && !m_pOutput->isEmpty())
+		if ( m_pOutput && !m_pOutput->isEmpty() )
 		{
 			return true;
 		}
-		if(networkBytesAvailable())
+		if ( networkBytesAvailable() )
 		{
 			return true;
 		}
@@ -149,44 +179,49 @@ public:
 		return false;
 	}
 
-	inline virtual CBuffer* getInputBuffer()
+	inline virtual Buffer* getInputBuffer()
 	{
-		Q_ASSERT(m_pInput != 0);
+		Q_ASSERT( m_pInput );
 
 		return m_pInput;
 	}
-	inline virtual CBuffer* getOutputBuffer()
+	inline virtual Buffer* getOutputBuffer()
 	{
-		Q_ASSERT(m_pOutput != 0);
+		Q_ASSERT( m_pOutput );
 
 		return m_pOutput;
 	}
 signals:
 	void connected();
-	void readyRead();
+	void readyRead();       // indicates there is data ready to be read
 	void disconnected();
-	void error(QAbstractSocket::SocketError);
-	void bytesWritten(qint64);
-	void stateChanged(QAbstractSocket::SocketState);
+	void error( QAbstractSocket::SocketError );
+	void bytesWritten( qint64 );
+	void stateChanged( QAbstractSocket::SocketState );
 	void aboutToClose();
 	void readyToTransfer();
 
 public slots:
 	void onDisconnectInt();
-	void onErrorInt(QAbstractSocket::SocketError e);
+	void onErrorInt( QAbstractSocket::SocketError e );
 
 public slots:
 	virtual void onConnectNode() = 0;
 	virtual void onDisconnectNode() = 0;
+
+	/**
+	 * @brief onRead handles newly available bytes for a network connection.
+	 */
 	virtual void onRead() = 0;
-	virtual void onError(QAbstractSocket::SocketError e) = 0;
-	virtual void onStateChange(QAbstractSocket::SocketState s);
+
+	virtual void onError( QAbstractSocket::SocketError e ) = 0;
+	virtual void onStateChange( QAbstractSocket::SocketState s );
 
 public:
 	TCPBandwidthMeter m_mInput;
 	TCPBandwidthMeter m_mOutput;
 
-	friend class CRateController;
+	friend class RateController;
 };
 
 

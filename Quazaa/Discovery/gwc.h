@@ -35,7 +35,7 @@ namespace Discovery
 /**
  * @brief The CGWC class implements a Gnutella Web Cache compatible to the GWC spec 2.0.
  */
-class CGWC : public CDiscoveryService
+class GWC : public DiscoveryService
 {
 	Q_OBJECT
 
@@ -43,7 +43,7 @@ class CGWC : public CDiscoveryService
 	/* ======================================= Attributes ======================================= */
 	/* ========================================================================================== */
 private:
-	QSharedPointer<QNetworkAccessManager> m_pNAMgr;
+	QNAMPtr m_pNAMgr;
 	QNetworkRequest* m_pRequest;
 	bool m_bGnutella;
 	bool m_bG2;
@@ -52,16 +52,22 @@ private:
 	/* ====================================== Construction ====================================== */
 	/* ========================================================================================== */
 public:
-	CGWC(const QUrl& oURL, const CNetworkType& oNType, quint8 nRating);
+	GWC( const QUrl& oURL, const NetworkType& oNType, quint8 nRating );
 
-	~CGWC();
+	~GWC();
 
 	/* ========================================================================================== */
 	/* ======================================= Operations ======================================= */
 	/* ========================================================================================== */
 	QString     type()       const;
-	inline bool isGnutella() const { return m_bGnutella; }
-	inline bool isG2()       const { return m_bG2; }
+	inline bool isGnutella() const
+	{
+		return m_bGnutella;
+	}
+	inline bool isG2()       const
+	{
+		return m_bG2;
+	}
 
 private:
 	void doQuery()  throw();
@@ -69,7 +75,7 @@ private:
 	void doCancelRequest() throw();
 
 private slots:
-	void requestCompleted(QNetworkReply* pReply);
+	void requestCompleted( QNetworkReply* pReply );
 };
 
 }

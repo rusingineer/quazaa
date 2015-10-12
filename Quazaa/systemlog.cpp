@@ -28,65 +28,70 @@
 
 #include "debug_new.h"
 
-CSystemLog systemLog;
+SystemLog systemLog;
 
-CSystemLog::CSystemLog() :
-m_pSection(QMutex::Recursive)
+#ifndef QUAZAA_SETUP_UNIT_TESTS
+SystemLog::SystemLog() :
+	m_pSection( QMutex::Recursive )
 {
-	m_pComponents = new QString[Components::NoComponents];
+	m_pComponents = new QString[Component::NoComponents];
 	m_bProcessingMessage = false;
 
-	qRegisterMetaType<LogSeverity::Severity>( "LogSeverity::Severity" );
-	qRegisterMetaType<Components::Component>( "Components::Component" );
+	qRegisterMetaType<LogSeverity>( "LogSeverity" );
+	qRegisterMetaType<Component>( "Component" );
 }
 
-CSystemLog::~CSystemLog()
+SystemLog::~SystemLog()
 {
 	delete[] m_pComponents;
 }
+#endif
 
-void CSystemLog::start()
+void SystemLog::start()
 {
-	m_pComponents[Components::None]       = QString();
-	m_pComponents[Components::Chat]       = tr( "[Chat] " );
-	m_pComponents[Components::IRC]        = tr( "[IRC] " );
-	m_pComponents[Components::Discovery]  = tr( "[Discovery] " );
-	m_pComponents[Components::Network]    = tr( "[Network] " );
-	m_pComponents[Components::Ares]       = tr( "[Ares] " );
-	m_pComponents[Components::BitTorrent] = tr( "[BitTorrent] " );
-	m_pComponents[Components::eD2k]       = tr( "[eD2k] " );
-	m_pComponents[Components::G2]         = tr( "[G2] " );
-	m_pComponents[Components::Security]   = tr( "[Security] " );
-	m_pComponents[Components::Library]    = tr( "[Library] " );
-	m_pComponents[Components::Downloads]  = tr( "[Downloads] " );
-	m_pComponents[Components::Uploads]    = tr( "[Uploads] " );
-	m_pComponents[Components::GUI]        = tr( "[GUI] " );
+	m_pComponents[ 0] = QString();
+	m_pComponents[ 1] = tr( "[Chat] "       );
+	m_pComponents[ 2] = tr( "[IRC] "        );
+	m_pComponents[ 3] = tr( "[Discovery] "  );
+	m_pComponents[ 4] = tr( "[Network] "    );
+	m_pComponents[ 5] = tr( "[Ares] "       );
+	m_pComponents[ 6] = tr( "[BitTorrent] " );
+	m_pComponents[ 7] = tr( "[eD2k] "       );
+	m_pComponents[ 8] = tr( "[G2] "         );
+	m_pComponents[ 9] = tr( "[Security] "   );
+	m_pComponents[10] = tr( "[Library] "    );
+	m_pComponents[11] = tr( "[Downloads] "  );
+	m_pComponents[12] = tr( "[Uploads] "    );
+	m_pComponents[13] = tr( "[GUI] "        );
+	m_pComponents[14] = tr( "[SignalQueue] " );
+	m_pComponents[15] = tr( "[HostCache] "  );
 }
 
-QString CSystemLog::msgFromComponent(Components::Component eComponent)
+QString SystemLog::msgFromComponent( Component nComponent )
 {
-	return m_pComponents[eComponent];
+	return m_pComponents[static_cast<quint8>( nComponent )];
 }
 
-void CSystemLog::postLog(const LogSeverity::Severity &severity, const QString &message)
+void SystemLog::postLog( LogSeverity nSeverity, const QString& sMessage )
 {
-	postLog( severity, Components::None, message );
+	postLog( nSeverity, Component::None, sMessage );
 }
 
-void CSystemLog::postLog(const LogSeverity::Severity &severity, const Components::Component &component,
-						 const QString &message)
+#ifndef QUAZAA_SETUP_UNIT_TESTS
+void SystemLog::postLog( LogSeverity nSeverity, Component nComponent,
+						 const QString& sMessage )
 {
-	QMutexLocker locker(&m_pSection);
+	QMutexLocker locker( &m_pSection );
 
-	static LogSeverity::Severity lastSeverity  = LogSeverity::Information;
-	static Components::Component lastComponent = Components::None;
+	static LogSeverity lastSeverity = LogSeverity::Information;
+	static Component lastComponent  = Component::None;
 	static QString lastMessage;
 	static int suppressed = 0;
 	static bool bCheck = true;
 
 	if ( bCheck )
 	{
-		if ( severity == lastSeverity && component == lastComponent && message == lastMessage )
+		if ( nSeverity == lastSeverity && nComponent == lastComponent && sMessage == lastMessage )
 		{
 			++suppressed;
 			return;
@@ -100,37 +105,61 @@ void CSystemLog::postLog(const LogSeverity::Severity &severity, const Components
 						 tr( "Suppressed %n identical message(s).", 0, suppressed ) );
 				bCheck = true;
 			}
-			lastMessage   = message;
-			lastSeverity  = severity;
-			lastComponent = component;
+			lastMessage   = sMessage;
+			lastSeverity  = nSeverity;
+			lastComponent = nComponent;
 			suppressed = 0;
 		}
 	}
 
-	const QString sComponentMessage = msgFromComponent( component ) + message;
+	const QString sComponentMessage = msgFromComponent( nComponent ) + sMessage;
 
-	switch ( severity )
+	/*switch ( nSeverity )
 	{
 		case LogSeverity::Debug:
 		case LogSeverity::Warning:
 		case LogSeverity::Critical:
 		case LogSeverity::Error:
-			qDebug() << qPrintable(sComponentMessage);
+			qDebug() << qPrintable( sComponentMessage );
 			break;
 		default:
 			break;
-	}
+	}*/
 
-	emit logPosted( sComponentMessage, severity );
+	qDebug() << qPrintable( sComponentMessage );
+
+	emit logPosted( sComponentMessage, nSeverity );
 }
 
-void CSystemLog::postLog(const LogSeverity::Severity &severity, const Components::Component &component,
-						 const char* format, ...)
+void SystemLog::postLog( LogSeverity nSeverity, Component nComponent,
+						 const char* format, ... )
 {
 	va_list argList;
 	va_start( argList, format );
 	QString message = QString().vsprintf( format, argList );
-	postLog( severity, component, message );
+	postLog( nSeverity, nComponent, message );
 	va_end( argList );
 }
+
+#else
+SystemLog::SystemLog()
+{
+	m_pComponents = new QString[Component::NoComponents];
+}
+
+SystemLog::~SystemLog()
+{
+	delete[] m_pComponents;
+}
+
+void SystemLog::postLog( LogSeverity, Component nComponent,
+						 const QString& sMessage )
+{
+	qDebug() << ( msgFromComponent( nComponent ) + sMessage ).toLocal8Bit().data();
+}
+
+void SystemLog::postLog( LogSeverity, Component, const char*, ... )
+{
+}
+#endif
 

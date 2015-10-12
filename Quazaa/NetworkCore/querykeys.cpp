@@ -13,12 +13,12 @@
 ** but WITHOUT ANY WARRANTY; without even the implied warranty of
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 **
-** Please review the following information to ensure the GNU General Public 
-** License version 3.0 requirements will be met: 
+** Please review the following information to ensure the GNU General Public
+** License version 3.0 requirements will be met:
 ** http://www.gnu.org/copyleft/gpl.html.
 **
-** You should have received a copy of the GNU General Public License version 
-** 3.0 along with Quazaa; if not, write to the Free Software Foundation, 
+** You should have received a copy of the GNU General Public License version
+** 3.0 along with Quazaa; if not, write to the Free Software Foundation,
 ** Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
@@ -28,42 +28,43 @@
 
 #include "debug_new.h"
 
-CQueryKeys QueryKeys;
+QueryKeys queryKeys;
 
-CQueryKeys::CQueryKeys()
-	: m_pTable(0), m_nTable(0)
+QueryKeys::QueryKeys()
+	: m_pTable( 0 ), m_nTable( 0 )
 {
 }
 
-CQueryKeys::~CQueryKeys()
+QueryKeys::~QueryKeys()
 {
 	delete [] m_pTable;
 }
 
-void CQueryKeys::prepare()
+void QueryKeys::prepare()
 {
 	m_nTable = 1u << 16;
 	m_pTable = new quint32[m_nTable];
 
-	for(uint i = 0; i < m_nTable; i++)
+	for ( uint i = 0; i < m_nTable; i++ )
 	{
-		m_pTable[i] = ((qrand() % std::numeric_limits<quint32>::max()) << 16) | qrand() % std::numeric_limits<quint32>::max();
+		m_pTable[i] = ( ( qrand() % std::numeric_limits<quint32>::max() ) << 16 ) | qrand() %
+					  std::numeric_limits<quint32>::max();
 	}
 }
 
-quint32 CQueryKeys::create(QHostAddress pAddr)
+quint32 QueryKeys::create( QHostAddress pAddr )
 {
-	if(!m_pTable)
+	if ( !m_pTable )
 	{
 		prepare();
 	}
 
-	int nHash = qHash(pAddr) % m_nTable;
+	int nHash = qHash( pAddr ) % m_nTable;
 
 	return m_pTable[nHash];
 }
-bool CQueryKeys::check(QHostAddress pAddr, quint32 nKey)
+bool QueryKeys::check( QHostAddress pAddr, quint32 nKey )
 {
-	return (nKey == create(pAddr));
+	return ( nKey == create( pAddr ) );
 }
 

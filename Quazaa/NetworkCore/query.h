@@ -26,52 +26,52 @@
 #define QUERY_H
 
 #include "types.h"
+#include "NetworkCore/Hashes/hashset.h"
 
 class G2Packet;
-class CQuery;
-class CHash;
+class Query;
 
-typedef QSharedPointer<CQuery> CQueryPtr;
+typedef QSharedPointer<Query> QuerySharedPtr;
 
-class CQuery
+class Query
 {
 public:
 	QUuid           m_oGUID;
-	QList<CHash>	m_lHashes;
+	HashSet         m_vHashes;
 	QString         m_sMetadata;
 	quint64         m_nMinimumSize;
 	quint64         m_nMaximumSize;
-	QString         m_sDescriptiveName;	// Complete search string.
-	CEndPoint		m_oEndpoint;
-	quint32			m_nQueryKey;
+	QString         m_sDescriptiveName; // Complete search string.
+	EndPoint        m_oEndpoint;
+	quint32         m_nQueryKey;
 
-	QString			m_sG2PositiveWords;
-	QString			m_sG2NegativeWords;
-	QList<quint32>	m_lHashedKeywords;
+	QString         m_sG2PositiveWords;
+	QString         m_sG2NegativeWords;
+	QList<quint32>  m_lHashedKeywords;
 
 public:
-	CQuery();
+	Query();
 	QString descriptiveName()
 	{
 		return m_sDescriptiveName;
 	}
 
-	void setGUID(QUuid& guid);
+	void setGUID( QUuid& guid );
 
-	void addURN(const CHash& pHash);
-	void setDescriptiveName(QString sDN);
-	void setSizeRestriction(quint64 nMin, quint64 nMax);
-	void setMetadata(QString sMeta);
+	bool addURN( const Hash& rHash );
+	void setDescriptiveName( QString sDN );
+	void setSizeRestriction( quint64 nMin, quint64 nMax );
+	void setMetadata( QString sMeta );
 
 	bool checkValid();
 
-	G2Packet* toG2Packet(CEndPoint* pAddr = 0, quint32 nKey = 0);
+	G2Packet* toG2Packet( EndPoint* pAddr = 0, quint32 nKey = 0 );
 
-	static CQueryPtr fromPacket(G2Packet* pPacket, CEndPoint* pEndpoint = 0);
+	static QuerySharedPtr fromPacket( G2Packet* pPacket, const EndPoint* const pEndpoint = NULL );
 
 private:
-	void buildG2Keywords(QString strPhrase);
-	bool fromG2Packet(G2Packet* pPacket, CEndPoint* pEndpoint);
+	void buildG2Keywords( QString strPhrase );
+	bool fromG2Packet( G2Packet* pPacket, const EndPoint* const pEndpoint );
 };
 
 #endif // QUERY_H

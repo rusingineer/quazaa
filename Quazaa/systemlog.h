@@ -25,68 +25,82 @@
 #ifndef SYSTEMLOG_H
 #define SYSTEMLOG_H
 
-#include <QObject>
+#ifndef QUAZAA_SETUP_UNIT_TESTS
 #include <QMutex>
 #include <QWaitCondition>
 #include <QThread>
+#endif
 
-namespace LogSeverity
+#include <QObject>
+#include <QString>
+
+enum class LogSeverity : quint8
 {
-enum Severity { Information, // Inform the user about something
-				Security,    // security related
-				Notice,      // Inform the user about something less important
-				Debug,       // Debugging output
-				Warning,
-				Error,
-				Critical };
-}
+	Information = 1, // Inform the user about something
+	Security    = 2, // security related
+	Notice      = 3, // Inform the user about something less important
+	Debug       = 4, // Debugging output
+	Warning     = 5,
+	Error       = 6,
+	Critical    = 7
+};
 
-namespace Components
+enum class Component : quint8
 {
-enum Component { None         =  0,
-				 Chat         =  1, // P2P chat
-				 IRC          =  2,
-				 Discovery    =  3,
-				 Network      =  4, // global network stuff
-				 Ares         =  5,
-				 BitTorrent   =  6,
-				 eD2k         =  7,
-				 G2           =  8,
-				 Security     =  9,
-				 Library      = 10, // Share manager
-				 Downloads    = 11,
-				 Uploads      = 12,
-				 GUI          = 13,
-				 NoComponents = 14 };
-}
+	None         =  0,
+	Chat         =  1, // P2P chat
+	IRC          =  2,
+	Discovery    =  3,
+	Network      =  4, // global network stuff
+	Ares         =  5,
+	BitTorrent   =  6,
+	eD2k         =  7,
+	G2           =  8,
+	Security     =  9,
+	Library      = 10, // Share manager
+	Downloads    = 11,
+	Uploads      = 12,
+	GUI          = 13,
+	SignalQueue  = 14,
+	HostCache    = 15,
+	NoComponents = 16
+};
 
-class CSystemLog : public QObject
+class SystemLog : public QObject
 {
 	Q_OBJECT
+
+#ifndef QUAZAA_SETUP_UNIT_TESTS
 private:
 	QMutex m_pSection;
-	QString* m_pComponents;
 	bool m_bProcessingMessage;
+#endif
+
+	QString* m_pComponents;
 
 public:
-	CSystemLog();
-	~CSystemLog();
+	SystemLog();
+	~SystemLog();
 
 	void start();
 
-	QString msgFromComponent(Components::Component eComponent);
+	QString msgFromComponent( Component nComponent );
 
+#ifndef QUAZAA_SETUP_UNIT_TESTS
 signals:
-	void logPosted(QString message, LogSeverity::Severity severity);
+	void logPosted( QString sMessage, LogSeverity nSeverity );
 
 public slots:
-	void postLog(const LogSeverity::Severity& severity, const QString& message);
+	void postLog( LogSeverity nSeverity, const QString& sMessage );
 
 public:
-	void postLog(const LogSeverity::Severity& severity, const Components::Component& component, const QString& message);
-	void postLog(const LogSeverity::Severity& severity, const Components::Component& component, const char* format, ...);
+#else
+	void postLog( LogSeverity nSeverity, const QString& sMessage );
+#endif
+	void postLog( LogSeverity nSeverity, Component nComponent, const QString& sMessage );
+	void postLog( LogSeverity nSeverity, Component nComponent, const char* format, ... );
 };
 
-extern CSystemLog systemLog;
+extern SystemLog systemLog;
 
 #endif // SYSTEMLOG_H

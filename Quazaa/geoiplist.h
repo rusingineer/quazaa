@@ -33,7 +33,7 @@
 
 typedef QPair<quint32, QPair<quint32, QString> > GeoIPEntry;
 
-class CGeoIPList
+class GeoIPList
 {
 protected:
 	bool	m_bListLoaded;
@@ -47,32 +47,33 @@ public:
 
 	QList<GeoIPEntry> m_lDatabase;
 
-	CGeoIPList();
+	GeoIPList();
 	void loadGeoIP();
-	inline QString findCountryCode(const QString& IP) const;
-	inline QString findCountryCode(const QHostAddress& ip) const;
 
-	QString findCountryCode(const quint32 nIp) const;
-	QString countryNameFromCode(const QString& code) const;
+	/**
+	 * @brief findCountryCode allows to find out the country code for a given IP.
+	 * @param sIP : the IP
+	 * @return the country code; "ZZ" if code could not be found or geo IP list not yet initialized.
+	 */
+	QString findCountryCode( const QString& sIP ) const;
+
+	/**
+	 * @brief findCountryCode allows to find out the country code for a given IP.
+	 * @param ip : the IP
+	 * @return the country code; "ZZ" if code could not be found or geo IP list not yet initialized.
+	 */
+	QString findCountryCode( const QHostAddress& ip ) const;
+
+	/**
+	 * @brief findCountryCode allows to find out the country code for a given IP.
+	 * @param nIP : the IP
+	 * @return the country code; "ZZ" if code could not be found or geo IP list not yet initialized.
+	 */
+	QString findCountryCode( const quint32 nIp ) const;
+
+	QString countryNameFromCode( const QString& code ) const;
 };
 
-QString CGeoIPList::findCountryCode(const QString& IP) const
-{
-	CEndPoint ipAddress( IP );
-	return findCountryCode( ipAddress );
-}
-
-QString CGeoIPList::findCountryCode(const QHostAddress& ip) const
-{
-	if ( ip.protocol() == 1 ) // IPv6
-	{
-		return "ZZ";
-	}
-
-	const quint32 ip4 = ip.toIPv4Address();
-	return findCountryCode( ip4 );
-}
-
-extern CGeoIPList geoIP;
+extern GeoIPList geoIP;
 
 #endif // GEOIPLIST_H

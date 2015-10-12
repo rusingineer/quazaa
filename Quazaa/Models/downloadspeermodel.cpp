@@ -24,63 +24,63 @@
 
 #include "downloadstreemodel.h"
 
-CDownloadsPeerModel::CDownloadsPeerModel(QObject *parent) :
-	QSortFilterProxyModel(parent)
+DownloadsPeerModel::DownloadsPeerModel( QObject* parent ) :
+	QSortFilterProxyModel( parent )
 {
 }
 
-QVariant CDownloadsPeerModel::headerData(int section, Qt::Orientation orientation, int role) const
+QVariant DownloadsPeerModel::headerData( int section, Qt::Orientation orientation, int role ) const
 {
-	if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
+	if ( orientation == Qt::Horizontal && role == Qt::DisplayRole )
 	{
-		switch(section)
+		switch ( section )
 		{
-		case CDownloadsTreeModel::NAME:
-				return tr("IP");
+		case DownloadsTreeModel::NAME:
+			return tr( "IP" );
 			break;
-		case CDownloadsTreeModel::SIZE:
-				return tr("Size");
+		case DownloadsTreeModel::SIZE:
+			return tr( "Size" );
 			break;
-		case CDownloadsTreeModel::PROGRESS:
-				return tr("Progress");
+		case DownloadsTreeModel::PROGRESS:
+			return tr( "Progress" );
 			break;
-		case CDownloadsTreeModel::BANDWIDTH:
-				return tr("Bandwidth");
+		case DownloadsTreeModel::BANDWIDTH:
+			return tr( "Bandwidth" );
 			break;
-		case CDownloadsTreeModel::STATUS:
-				return tr("Status");
+		case DownloadsTreeModel::STATUS:
+			return tr( "Status" );
 			break;
-		case CDownloadsTreeModel::PRIORITY:
-				return tr("Priority");
+		case DownloadsTreeModel::PRIORITY:
+			return tr( "Priority" );
 			break;
-		case CDownloadsTreeModel::CLIENT:
-				return tr("Client");
+		case DownloadsTreeModel::CLIENT:
+			return tr( "Client" );
 			break;
-		case CDownloadsTreeModel::COMPLETED:
-				return tr("Completed");
+		case DownloadsTreeModel::COMPLETED:
+			return tr( "Completed" );
 			break;
-		case CDownloadsTreeModel::COUNTRY:
-				return tr("Country");
+		case DownloadsTreeModel::COUNTRY:
+			return tr( "Country" );
 			break;
 		default:
-				return QVariant();
+			return QVariant();
 		}
 	}
 
 	return QVariant();
 }
 
-void CDownloadsPeerModel::setCurrentRoot(const QModelIndex &index)
+void DownloadsPeerModel::setCurrentRoot( const QModelIndex& index )
 {
-	Q_ASSERT(index.model() == sourceModel());
+	Q_ASSERT( index.model() == sourceModel() );
 
 	m_oCurrentRoot = index;
 	invalidate();
 }
 
-bool CDownloadsPeerModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
+bool DownloadsPeerModel::filterAcceptsRow( int sourceRow, const QModelIndex& sourceParent ) const
 {
-	QModelIndex index1 = sourceModel()->index(sourceRow, 0, sourceParent);
+	QModelIndex index1 = sourceModel()->index( sourceRow, 0, sourceParent );
 
-	return (m_oCurrentRoot.isValid() && (index1 == m_oCurrentRoot || index1.parent() == m_oCurrentRoot));
+	return ( m_oCurrentRoot.isValid() && ( index1 == m_oCurrentRoot || index1.parent() == m_oCurrentRoot ) );
 }

@@ -31,33 +31,33 @@
 #include "types.h"
 #include "queryhit.h"
 
-class CManagedSearch;
+class ManagedSearch;
 class G2Packet;
-class CG2Node;
+class G2Node;
 
-class CSearchManager : public QObject
+class SearchManager : public QObject
 {
 	Q_OBJECT
 
 public:
-	QHash<QUuid, CManagedSearch*> m_lSearches;
+	QHash<QUuid, ManagedSearch*> m_lSearches;
 	QMutex  m_pSection;
 	quint32 m_nPruneCounter;
 	quint32 m_nCookie;
 
 public:
-	CSearchManager(QObject* parent = 0);
+	SearchManager( QObject* parent = 0 );
 
 	void onTimer();
 
-	void add(CManagedSearch* pSearch);
-	void remove(CManagedSearch* pSearch);
+	void add( ManagedSearch* pSearch );
+	void remove( ManagedSearch* pSearch );
 
-	CManagedSearch* find(QUuid& oGUID);
+	ManagedSearch* find( QUuid& oGUID );
 
 	// Returns true if the packet is to be routed
-	bool onQueryAcknowledge(G2Packet* pPacket, CEndPoint& addr, QUuid& oGUID);
-	bool onQueryHit(G2Packet* pPacket, QueryHitInfo* pHitInfo);
+	bool onQueryAcknowledge( G2Packet* pPacket, const EndPoint& oSender, QUuid& oGUID );
+	bool onQueryHit( G2Packet* pPacket, QueryHitInfo* pHitInfo );
 
 signals:
 
@@ -65,6 +65,6 @@ public slots:
 
 };
 
-extern CSearchManager SearchManager;
+extern SearchManager searchManager;
 
 #endif // SEARCHMANAGER_H

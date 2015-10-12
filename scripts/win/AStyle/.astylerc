@@ -1,0 +1,35 @@
+style=allman
+
+# Uncomment this to use tabs for indentation, and spaces for continuation line alignment. This ensures that the code is displayed correctly  regardless of the viewer’s tab size.
+#indent=tab
+indent=force-tab
+
+min-conditional-indent=0
+
+max-instatement-indent=100
+
+# Adds spacing around the operators
+pad-oper
+
+# Adds spacing to the inside of parenthesis
+pad-paren-in
+
+# Adds space after if, for, while,...
+pad-header
+
+# Move all pointers (etc.) to the type (instead of to the name), e.g char* a not char *a.
+align-pointer=type
+
+# Adds brackets to one line if, for, while etc. statements
+add-brackets
+
+# Break lines if their length is longer than 120 chars
+max-code-length=120
+
+# Excludes
+exclude=3rdparty
+exclude=bin
+exclude=debug
+exclude=release
+exclude=temp
+exclude=version.h

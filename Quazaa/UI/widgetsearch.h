@@ -26,41 +26,46 @@
 #define WIDGETSEARCH_H
 
 #include <QWidget>
+#include <QNetworkAccessManager>
+
 #include "widgetsearchresults.h"
 
 namespace Ui
 {
-	class CWidgetSearch;
+class WidgetSearch;
 }
 
-class CWidgetSearch : public QWidget
+class WidgetSearch : public QWidget
 {
 	Q_OBJECT
 public:
-	CWidgetSearch(QWidget* parent = 0);
-	~CWidgetSearch();
-	CWidgetSearchResults* panelSearchResults;
-	CWidgetSearchTemplate* currentPage;
+	WidgetSearch( QWidget* parent = 0 );
+	~WidgetSearch();
+
+	WidgetSearchResults* panelSearchResults;
+	WidgetSearchTemplate* currentPage;
+
 	void saveWidget();
 
 protected:
-	void changeEvent(QEvent* e);
+	void changeEvent( QEvent* e );
 
 private:
-	Ui::CWidgetSearch* ui;
+	QNetworkAccessManager netManager;
+	Ui::WidgetSearch* ui;
 
 public slots:
-	void startNewSearch(QString* searchString);
+	void startNewSearch( QString* searchString );
 	void focusSearchInput();
 
 private slots:
-	void on_splitterSearch_customContextMenuRequested(QPoint pos);
+	void on_splitterSearch_customContextMenuRequested( QPoint pos );
 	void on_toolButtonNewSearch_clicked();
 	void on_toolButtonSearchClear_clicked();
 	void on_toolButtonSearch_clicked();
-	void onSearchTabChanged(CWidgetSearchTemplate* searchPage);
-	void updateStats(CWidgetSearchTemplate* searchWidget);
-	void updateButtons(bool bInitial = false);
+	void onSearchTabChanged( WidgetSearchTemplate* searchPage );
+	void updateStats( WidgetSearchTemplate* searchWidget );
+	void updateButtons( bool bInitial = false );
 	void setSkin();
 };
 

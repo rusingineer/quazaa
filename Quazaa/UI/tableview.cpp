@@ -2,7 +2,8 @@
 #include <QHeaderView>
 #include <QKeyEvent>
 
-CTableView::CTableView()
+CTableView::CTableView( QWidget* parent ) :
+	QTableView( parent )
 {
 	// Quazaa default view settings for table views with complete row selection.
 
@@ -28,7 +29,7 @@ CTableView::CTableView()
 	this->verticalHeader()->setHighlightSections( false );
 }
 
-void CTableView::keyPressEvent(QKeyEvent *e)
+void CTableView::keyPressEvent( QKeyEvent* e )
 {
 	switch ( e->key() )
 	{
@@ -81,7 +82,7 @@ void CTableView::keyPressEvent(QKeyEvent *e)
 			{
 				int currentRow = currentIndex.row();
 				// ...and if we're not at the head of the list...
-				if ( --currentRow != -1 )
+				if ( !currentRow-- )
 				{
 					// Makes sure the condition above is sufficient.
 					Q_ASSERT( currentRow < model->rowCount( QModelIndex() ) && currentRow > -1 );
@@ -105,7 +106,9 @@ void CTableView::keyPressEvent(QKeyEvent *e)
 		QAbstractItemModel* model = QAbstractItemView::model();
 
 		if ( model && model->rowCount( QModelIndex() ) )
+		{
 			setCurrentIndex( model->index( 0, 0 ) );
+		}
 
 		break;
 	}
@@ -118,7 +121,9 @@ void CTableView::keyPressEvent(QKeyEvent *e)
 		{
 			int lastRow = model->rowCount( QModelIndex() );
 			if ( lastRow != 0 ) // If there are Items in the list...
+			{
 				setCurrentIndex( model->index( --lastRow, 0 ) );
+			}
 		}
 		break;
 	}

@@ -28,12 +28,12 @@
 #include "compressedconnection.h"
 #include "types.h"
 
-class CNeighbour : public CCompressedConnection
+class Neighbour : public CompressedConnection
 {
 	Q_OBJECT
 
 public:
-	DiscoveryProtocol   m_nProtocol;
+	DiscoveryProtocol::Protocol m_nProtocol;
 
 	QString         m_sHandshake;
 
@@ -55,31 +55,37 @@ public:
 
 
 public:
-	CNeighbour(QObject* parent = NULL);
-	virtual ~CNeighbour();
+	Neighbour( QObject* parent = NULL );
+	virtual ~Neighbour();
 
-	virtual void connectTo(CEndPoint oAddress)
+	virtual void connectTo( EndPoint oAddress )
 	{
-		systemLog.postLog( LogSeverity::Information, Components::Network,
+		systemLog.postLog( LogSeverity::Information, Component::Network,
 						   "Initiating neighbour connection to %s...",
 						   qPrintable( oAddress.toString() ) );
 		m_nState = nsConnecting;
-		CNetworkConnection::connectTo( oAddress );
+		NetworkConnection::connectTo( oAddress );
 	}
-	void attachTo(CNetworkConnection* pOther)
+	void attachTo( NetworkConnection* pOther )
 	{
+		qDebug() << "new state: handshaking";
 		m_nState = nsHandshaking;
-		CCompressedConnection::attachTo( pOther );
+		CompressedConnection::attachTo( pOther );
 	}
 
-	virtual void onTimer(quint32 tNow);
-	void close(bool bDelayed = false);
+	virtual void onTimer( quint32 tNow );
+	void close( bool bDelayed = false );
 
 signals:
 
 public slots:
 	void onDisconnectNode();
-	void onError(QAbstractSocket::SocketError e);
+
+	/**
+	 * @brief onRead handles newly available bytes for a network connection.
+	 */
+	virtual void onRead() = 0;
+	virtual void onError( QAbstractSocket::SocketError e );
 
 };
 

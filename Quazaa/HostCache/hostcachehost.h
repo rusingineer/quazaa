@@ -1,7 +1,7 @@
 /*
 ** hostcachehost.h
 **
-** Copyright © Quazaa Development Team, 2009-2013.
+** Copyright © Quazaa Development Team, 2013-2014.
 ** This file is part of QUAZAA (quazaa.sourceforge.net)
 **
 ** Quazaa is free software; this file may be used under the terms of the GNU
@@ -25,36 +25,175 @@
 #ifndef HOSTCACHEHOST_H
 #define HOSTCACHEHOST_H
 
-#include "types.h"
-#include "network.h"
 #include "quazaasettings.h"
+#include "idprovider.h"
 
-class CHostCacheHost
+#include "endpoint.h"
+#include "networktype.h"
+
+#ifndef QUAZAA_SETUP_UNIT_TESTS
+#include "network.h"
+#endif
+
+namespace HostManagement
 {
-public:
-	CEndPoint   m_oAddress;     // Adres huba
-	quint32     m_tTimestamp;   // Kiedy ostatnio widziany
 
-	quint32     m_nQueryKey;    // QK
-	CEndPoint   m_nKeyHost;     // host dla ktorego jest QK
-	quint32     m_nKeyTime;     // kiedy odebrano OK?
+/**
+ * @brief SourceID: ID type used to relate a HostCacheHost with the source it has been obtained
+ * from. All IDs are positive. 0 indicates an invalid ID.
+ */
+typedef quint32 SourceID;
 
-	quint32     m_tAck;         // czas ostatniej operacji wymagajacej potwierdzenia
+class HostCacheHost
+{
+protected:
+	DiscoveryProtocol::Protocol    m_nType;        // The network type
 
-	quint32     m_tLastQuery;   // kiedy poslano ostatnie zapytanie?
-	quint32     m_tRetryAfter;  // kiedy mozna ponowic?
+	EndPoint    m_oAddress;     // Hub address
+
+	quint32     m_tTimeStamp;   // Kiedy ostatnio widziany
+
+//	quint32     m_nID;          // GUI ID
+
+	SourceID    m_nOwnID;
+	SourceID    m_nSourceID;
+
 	quint32     m_tLastConnect; // kiedy ostatnio sie polaczylismy?
-	quint32     m_nFailures;
+	quint32     m_tLastConnectionEstablished;
+
+	quint8      m_nFailures;    // Connection failures in a row.
+
+	bool        m_bConnectable;
+
+protected:
+	// mechanism for allocating GUI IDs
+//	static IDProvider<quint32>  m_oIDProvider;
+	static bool                 m_bShutDownFlag;
+
+public:
+	HostCacheHost( const EndPoint& oAddress, quint8 nFailures, quint32 tTimestamp,
+				   quint32 tLastConnect, SourceID nOwnID, SourceID nSourceID );
+	virtual ~HostCacheHost();
 
 private:
-	CHostCacheHost(CEndPoint oAddress, quint32 tTimestamp);
+	HostCacheHost( const HostCacheHost& )
+	{
+		Q_ASSERT( false );    // avoid unintentional copies
+	}
+
 public:
-	~CHostCacheHost();
+	virtual bool canQuery( const quint32 ) const
+	{
+		return true;
+	}
 
-	bool canQuery(const quint32 tNow = common::getTNowUTC());
-	void setKey(quint32 nKey, const quint32 tNow = common::getTNowUTC(), CEndPoint* pHost = NULL);
+	static HostCacheHost* load( QDataStream& fsFile, quint32 tNow );
+	virtual void save( QDataStream& fsFile );
 
-	friend class CHostCache;
+	inline DiscoveryProtocol::Protocol type() const
+	{
+		return m_nType;
+	}
+
+	inline EndPoint address()       const
+	{
+		return m_oAddress;
+	}
+	inline quint32  timestamp()     const
+	{
+		return m_tTimeStamp;
+	}
+//	inline quint32  id()            const
+//	{
+//		return m_nID;
+//	}
+	inline SourceID ownId()         const
+	{
+		return m_nOwnID;
+	}
+	inline SourceID sourceId()      const
+	{
+		return m_nSourceID;
+	}
+	inline void setSource( SourceID nSource )
+	{
+		m_nSourceID = nSource;
+	}
+	inline quint32  lastConnect()   const
+	{
+		return m_tLastConnect;
+	}
+	inline quint32  lastConnectSuccess() const
+	{
+		return m_tLastConnectionEstablished;
+	}
+	inline quint8   failures()      const
+	{
+		return m_nFailures;
+	}
+	inline bool     connectable()   const
+	{
+		return m_bConnectable;
+	}
+
+	// There is no setTimestamp() as the timestamp needs to be maintained by the Host Cache.
+	// The same goes for failures and the GUI ID.
+	inline void      setAddress(     EndPoint oAddress     )
+	{
+		m_oAddress     = oAddress;
+	}
+	inline void      setLastConnect( quint32   tLastConnect )
+	{
+		m_tLastConnect = tLastConnect;
+	}
+
+	// Important: setConnectable() is only to be used by maintain(), else the connectables counter
+	// is messed up.
+	inline void      setConnectable( bool      bConnectable )
+	{
+		m_bConnectable = bConnectable;
+	}
+
+	inline static void setShutDownFlag()
+	{
+		m_bShutDownFlag = true;
+	}
+};
+
+} // namespace HostManagement
+
+typedef QSharedPointer<HostManagement::HostCacheHost> SharedHostPtr;
+
+#include <QIcon>
+#include <QAbstractTableModel>
+
+class HostCacheTableModel;
+
+class HostData
+{
+public:
+	SharedHostPtr   m_pHost;
+
+	const EndPoint  m_oAddress;
+	const QString   m_sAddress;
+	const QString   m_sCountryCode;
+	const QString   m_sCountry;
+	const QIcon     m_iCountry;
+//	const quint32   m_nID;
+	quint32         m_tLastConnect;
+	QString         m_sLastConnect;
+	quint8          m_nFailures;
+	QString         m_sFailures;
+
+	DiscoveryProtocol::Protocol m_nType;
+
+//	QString         m_sUserAgent;
+//	QIcon           m_iNetwork;
+
+	HostData( SharedHostPtr pHost );
+	bool update( int row, int col, QModelIndexList& to_update, HostCacheTableModel* model );
+	QVariant data( int col ) const;
+	bool lessThan( int col, const HostData* const pOther ) const;
 };
 
 #endif // HOSTCACHEHOST_H

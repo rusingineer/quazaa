@@ -38,409 +38,409 @@
 
 using namespace common;
 
-QDataStream& operator<<(QDataStream& s, const CDownload& rhs)
+QDataStream& operator<<( QDataStream& oStream, const Download& rhs )
 {
 	// basic info
-	s << quint32(1); // version
-	s << "dn" << rhs.m_sDisplayName;
-	s << "tn" << rhs.m_sTempName;
-	s << "s" << rhs.m_nSize;
-	s << "cs" << rhs.m_nCompletedSize;
-	s << "state" << rhs.m_nState;
-	s << "mf" << rhs.m_bMultifile;
-	s << "pr" << rhs.m_nPriority;
+	oStream << quint32( 1 ); // version
+	oStream << "dn" << rhs.m_sDisplayName;
+	oStream << "tn" << rhs.m_sTempName;
+	oStream << "s" << rhs.m_nSize;
+	oStream << "cs" << rhs.m_nCompletedSize;
+	oStream << "state" << rhs.m_nState;
+	oStream << "mf" << rhs.m_bMultifile;
+	oStream << "pr" << rhs.m_nPriority;
 
 	// files
-	foreach(CDownload::FileListItem i, rhs.m_lFiles)
+	foreach ( const Download::FileListItem & item, rhs.m_lFiles )
 	{
-		s << "file" << quint32(1); // version
-		s << "name" << i.sFileName;
-		s << "path" << i.sPath;
-		s << "tempname" << i.sTempName;
-		s << "so" << i.nStartOffset;
-		s << "eo" << i.nEndOffset;
-		foreach(CHash h, i.lHashes)
+		oStream << "file" << quint32( DOWNLOAD_CODE_FILE_VERSION ); // version
+		oStream << "name" << item.sFileName;
+		oStream << "path" << item.sPath;
+		oStream << "tempname" << item.sTempName;
+		oStream << "so" << item.nStartOffset;
+		oStream << "eo" << item.nEndOffset;
+
+		for ( quint8 i = 0, nSize = item.vHashes.size(); i < nSize; ++i )
 		{
-			s << "hash" << h.toURN();
+			if ( item.vHashes[i] )
+			{
+				oStream << "hash" << item.vHashes[i]->toURN();
+			}
 		}
-		s << "file-end";
+
+		oStream << "file-end";
 	}
 
 	// sources
-	foreach(CDownloadSource* pSource, rhs.m_lSources)
+	foreach ( DownloadSource * pSource, rhs.m_lSources )
 	{
-		s << *pSource;
+		oStream << *pSource;
 	}
 
-	s << "completed-frags";
-	Fragments::SerializeOut(s, rhs.m_lCompleted);
-	s << "verified-frags";
-	Fragments::SerializeOut(s, rhs.m_lCompleted);
+	oStream << "completed-frags";
+	Fragments::SerializeOut( oStream, rhs.m_lCompleted );
+	oStream << "verified-frags";
+	Fragments::SerializeOut( oStream, rhs.m_lCompleted );
 
-	s << "eof";
-	return s;
+	oStream << "eof";
+	return oStream;
 }
-QDataStream& operator>>(QDataStream& s, CDownload& rhs)
+QDataStream& operator>>( QDataStream& s, Download& rhs )
 {
-	quint32 nVer;
+	quint32 nVersion;
 
-	s >> nVer;
+	s >> nVersion;
 
-	if( nVer == 1 )
+	if ( nVersion == 1 ) // DOWNLOAD_CODE_FILE_VERSION
 	{
 		QByteArray sTag;
 		s >> sTag;
-		sTag.chop(1);
+		sTag.chop( 1 );
 
-		while( sTag != "eof" && s.status() == QDataStream::Ok )
+		while ( sTag != "eof" && s.status() == QDataStream::Ok )
 		{
-			if( sTag == "dn" )
+			if ( sTag == "dn" )
 			{
 				s >> rhs.m_sDisplayName;
 			}
-			else if( sTag == "tn" )
+			else if ( sTag == "tn" )
 			{
 				s >> rhs.m_sTempName;
 			}
-			else if( sTag == "s" )
+			else if ( sTag == "s" )
 			{
 				quint64 nSize;
 				s >> nSize;
 				rhs.m_nSize = nSize;
 
-				Fragments::List oAct(nSize), oCp(nSize), oVer(nSize);
-				rhs.m_lActive.swap(oAct);
-				rhs.m_lCompleted.swap(oCp);
-				rhs.m_lVerified.swap(oVer);
+				Fragments::List oAct( nSize ), oCp( nSize ), oVer( nSize );
+				rhs.m_lActive.swap( oAct );
+				rhs.m_lCompleted.swap( oCp );
+				rhs.m_lVerified.swap( oVer );
 			}
-			else if( sTag == "cs" )
+			else if ( sTag == "cs" )
 			{
 				s >> rhs.m_nCompletedSize;
 			}
-			else if( sTag == "state" )
+			else if ( sTag == "state" )
 			{
 				int x;
 				s >> x;
-				rhs.m_nState = static_cast<CDownload::DownloadState>(x);
+				rhs.m_nState = static_cast<Download::DownloadState>( x );
 			}
-			else if( sTag == "mf" )
+			else if ( sTag == "mf" )
 			{
 				s >> rhs.m_bMultifile;
 			}
-			else if( sTag == "pr" )
+			else if ( sTag == "pr" )
 			{
 				s >> rhs.m_nPriority;
 			}
-			else if( sTag == "file" )
+			else if ( sTag == "file" )
 			{
 				quint32 nVerF;
 				s >> nVerF;
 
-				if( nVerF == 1 )
+				if ( nVerF == 1 )
 				{
-					CDownload::FileListItem item;
+					Download::FileListItem item;
 
 					QByteArray sTag2;
 					s >> sTag2;
-					sTag2.chop(1);
+					sTag2.chop( 1 );
 
-					while( sTag2 != "file-end" && s.status() == QDataStream::Ok )
+					while ( sTag2 != "file-end" && s.status() == QDataStream::Ok )
 					{
-						if( sTag2 == "name" )
+						if ( sTag2 == "name" )
 						{
 							s >> item.sFileName;
 						}
-						else if( sTag2 == "path" )
+						else if ( sTag2 == "path" )
 						{
 							s >> item.sPath;
 						}
-						else if( sTag2 == "tempname" )
+						else if ( sTag2 == "tempname" )
 						{
 							s >> item.sTempName;
 						}
-						else if( sTag2 == "so" )
+						else if ( sTag2 == "so" )
 						{
 							s >> item.nStartOffset;
 						}
-						else if( sTag2 == "eo" )
+						else if ( sTag2 == "eo" )
 						{
 							s >> item.nEndOffset;
 						}
-						else if( sTag2 == "hash" )
+						else if ( sTag2 == "hash" )
 						{
 							QString sHash;
 							s >> sHash;
-							CHash* pHash = CHash::fromURN(sHash);
-							item.lHashes.append(*pHash);
-							delete pHash;
+							item.vHashes.insert( Hash::fromURN( sHash ) );
 						}
 
 						s >> sTag2;
-						sTag2.chop(1);
+						sTag2.chop( 1 );
 					}
 				}
 			}
-			else if( sTag == "download-source" )
+			else if ( sTag == "download-source" )
 			{
-				CDownloadSource* pSource = new CDownloadSource(&rhs);
+				DownloadSource* pSource = new DownloadSource( &rhs );
 				s >> *pSource;
-				rhs.addSource(pSource);
+				rhs.addSource( pSource );
 			}
-			else if( sTag == "completed-frags" )
+			else if ( sTag == "completed-frags" )
 			{
-				Fragments::SerializeIn(s, rhs.m_lCompleted);
+				Fragments::SerializeIn( s, rhs.m_lCompleted );
 			}
-			else if( sTag == "verified-frags" )
+			else if ( sTag == "verified-frags" )
 			{
-				Fragments::SerializeIn(s, rhs.m_lVerified);
+				Fragments::SerializeIn( s, rhs.m_lVerified );
 			}
 
 			s >> sTag;
-			sTag.chop(1);
+			sTag.chop( 1 );
 		}
 	}
 
-	Q_ASSERT(rhs.m_lActive.size() == rhs.m_lCompleted.size() && rhs.m_lCompleted.size() == rhs.m_lVerified.size());
+	Q_ASSERT( rhs.m_lActive.size() == rhs.m_lCompleted.size() && rhs.m_lCompleted.size() == rhs.m_lVerified.size() );
 	return s;
 }
 
-CDownload::CDownload(CQueryHit* pHit, QObject *parent) :
-	QObject(parent),
-	m_lCompleted(pHit->m_nObjectSize),
-	m_lVerified(pHit->m_nObjectSize),
-	m_lActive(pHit->m_nObjectSize),
-	m_bSignalSources(false),
-	m_nPriority(125),
-	m_bModified(true),
-	m_nTransfers(0)
+Download::Download( QueryHit* pHit, QObject* parent ) :
+	QObject( parent ),
+	m_lCompleted( pHit->m_nObjectSize ),
+	m_lVerified( pHit->m_nObjectSize ),
+	m_lActive( pHit->m_nObjectSize ),
+	m_bSignalSources( false ),
+	m_nPriority( 125 ),
+	m_bModified( true ),
+	m_nTransfers( 0 )
 {
-	Q_ASSERT(pHit != NULL);
+	Q_ASSERT( pHit != NULL );
 
 	int nSources = 0;
 	m_sDisplayName = pHit->m_sDescriptiveName;
 	m_nSize = pHit->m_nObjectSize;
 	m_nCompletedSize = 0;
-	m_sTempName = getTempFileName(m_sDisplayName);
 
 	FileListItem oFile;
-	oFile.sFileName = fixFileName(m_sDisplayName);
+	oFile.sFileName = fixFileName( m_sDisplayName );
 	oFile.sTempName = m_sTempName;
 	oFile.nStartOffset = 0;
 	oFile.nEndOffset = m_nSize - 1;
-	m_lFiles.append(oFile);
+	m_lFiles.append( oFile );
 	m_bMultifile = false;
-	// hashes are not needed here, for single file download
 
-	nSources = addSource(pHit);
+	nSources = addSource( pHit );
+	m_sTempName = getIncompleteFileName( m_vHashes );
+	if ( m_sTempName.isEmpty() )
+	{
+		m_sTempName = m_sDisplayName;
+	}
 
 	setState( dsQueued );
 
-	systemLog.postLog( LogSeverity::Notice, Components::Downloads,
-	                   qPrintable( tr( "Created download for %s with %d sources." ) ),
-	                   qPrintable( m_sDisplayName ), nSources );
+	systemLog.postLog( LogSeverity::Notice, Component::Downloads,
+					   qPrintable( tr( "Created download for %s with %d sources." ) ),
+					   qPrintable( m_sDisplayName ), nSources );
 }
 
-CDownload::~CDownload()
+Download::~Download()
 {
-	ASSUME_LOCK(Downloads.m_pSection);
+	ASSUME_LOCK( downloads.m_pSection );
 
-	qDeleteAll(m_lSources);
+	qDeleteAll( m_lSources );
 }
 
-void CDownload::start()
+void Download::start()
 {
 	m_tStarted = common::getDateTimeUTC();
-	setState(dsPending);
+	setState( dsPending );
 }
 
-bool CDownload::addSource(CDownloadSource *pSource)
+bool Download::addSource( DownloadSource* pSource )
 {
-	ASSUME_LOCK(Downloads.m_pSection);
+	ASSUME_LOCK( downloads.m_pSection );
 
-	Q_ASSERT(pSource->m_pDownload == this);
+	Q_ASSERT( pSource->m_pDownload == this );
 
-	foreach(CDownloadSource* pThis, m_lSources)
+	foreach ( DownloadSource * pThis, m_lSources )
 	{
-		if( (!pThis->m_oGUID.isNull() && pThis->m_oGUID == pSource->m_oGUID)
-				|| (pThis->m_oAddress == pSource->m_oAddress)
-				|| (!pThis->m_sURL.isEmpty() && pThis->m_sURL == pSource->m_sURL))
+		if ( ( !pThis->m_oGUID.isNull() && pThis->m_oGUID == pSource->m_oGUID )
+			 || ( pThis->m_oAddress == pSource->m_oAddress )
+			 || ( !pThis->m_sURL.isEmpty() && pThis->m_sURL == pSource->m_sURL ) )
 		{
 			return false;
 		}
 	}
 
-	m_lSources.append(pSource);
+	m_lSources.append( pSource );
 
-	if( m_bSignalSources )
-		emit sourceAdded(pSource);
+	if ( m_bSignalSources )
+	{
+		emit sourceAdded( pSource );
+	}
 
 	return true;
 }
-int CDownload::addSource(CQueryHit *pHit)
+
+// TODO: check whether this is actually ever called for hits with m_pNext != NULL
+int Download::addSource( QueryHit* pHit )
 {
-	CQueryHit* pThis = pHit;
+	QueryHit* pCurrentHit = pHit;
 	int nSources = 0;
 
-	while(pThis != NULL)
+	while ( pCurrentHit )
 	{
-		// add hashes
-		for(QList<CHash>::const_iterator it = pThis->m_lHashes.begin(); it != pThis->m_lHashes.end(); ++it)
+		if ( !m_vHashes.insert( pCurrentHit->m_vHashes ) )
 		{
-			bool bFound = false;
-			for(QList<CHash>::const_iterator it2 = m_lHashes.begin(); it2 != m_lHashes.end(); ++it)
-			{
-				if(*it == *it2)
-				{
-					bFound = true;
-					break;
-				}
-			}
-
-			if( !bFound )
-			{
-				m_lHashes.append(*it);
-			}
+			// TODO: handle hash conflicts
 		}
 
-		CDownloadSource* pSource = new CDownloadSource(this, pThis);
-		if( addSource(pSource) )
+		DownloadSource* pSource = new DownloadSource( this, pCurrentHit );
+		if ( addSource( pSource ) )
 		{
-			nSources++;
+			++nSources;
 		}
 		else
 		{
 			delete pSource;
 		}
-		pThis = pThis->m_pNext;
+		pCurrentHit = pCurrentHit->m_pNext;
 	}
 
 	return nSources;
 }
 
-void CDownload::removeSource(CDownloadSource *pSource)
+void Download::removeSource( DownloadSource* pSource )
 {
-	ASSUME_LOCK(Downloads.m_pSection);
+	ASSUME_LOCK( downloads.m_pSection );
 
-	for( int i = 0; i < m_lSources.size(); ++i )
+	for ( int i = 0; i < m_lSources.size(); ++i )
 	{
-		if( m_lSources.at(i) == pSource )
+		if ( m_lSources.at( i ) == pSource )
 		{
-			m_lSources.removeAt(i);
+			m_lSources.removeAt( i );
 		}
 	}
 }
 
-int CDownload::startTransfers(int /*nMaxTransfers*/)
+int Download::startTransfers( int /*nMaxTransfers*/ )
 {
-	ASSUME_LOCK(Downloads.m_pSection);
+	ASSUME_LOCK( downloads.m_pSection );
 
 	return 0; // must return the number of just started transfers
 }
 
-void CDownload::stopTransfers()
+void Download::stopTransfers()
 {
-	ASSUME_LOCK(Downloads.m_pSection);
+	ASSUME_LOCK( downloads.m_pSection );
 
 }
 
-bool CDownload::sourceExists(CDownloadSource *pSource)
+bool Download::sourceExists( DownloadSource* pSource )
 {
-	return (m_lSources.indexOf(pSource) != -1);
+	return ( m_lSources.indexOf( pSource ) != -1 );
 }
 
-QList<CTransfer *> CDownload::getTransfers()
+QList<Transfer*> Download::getTransfers()
 {
-	ASSUME_LOCK(Transfers.m_pSection);
+	ASSUME_LOCK( transfers.m_pSection );
 
-	return Transfers.getByOwner(this);
+	return transfers.getByOwner( this );
 }
 
-Fragments::List CDownload::getWantedFragments()
+Fragments::List Download::getWantedFragments()
 {
 	// for now...
-	Fragments::List oList = inverse(m_lCompleted);
+	Fragments::List oList = inverse( m_lCompleted );
 
 	return oList;
 }
 
-Fragments::List CDownload::getPossibleFragments(const Fragments::List &oAvailable, Fragments::Fragment &oLargest)
+Fragments::List Download::getPossibleFragments( const Fragments::List& oAvailable, Fragments::Fragment& oLargest )
 {
-	Fragments::List oPossible(oAvailable);
+	Fragments::List oPossible( oAvailable );
 
-	if( oAvailable.empty() )
+	if ( oAvailable.empty() )
 	{
 		oPossible = getWantedFragments();
 	}
 	else
 	{
-		Fragments::List oTmp = inverse(getWantedFragments());
-		oPossible.erase(oTmp.begin(), oTmp.end());
+		Fragments::List oTmp = inverse( getWantedFragments() );
+		oPossible.erase( oTmp.begin(), oTmp.end() );
 	}
 
-	if( oPossible.empty() )
+	if ( oPossible.empty() )
+	{
 		return oPossible;
+	}
 
 	oLargest = *oPossible.largest_range();
 
-	QList<CTransfer*> lTransfers = getTransfers();
-	foreach(CTransfer* pTransfer, lTransfers)
+	QList<Transfer*> lTransfers = getTransfers();
+	foreach ( Transfer * pTransfer, lTransfers )
 	{
-		CDownloadTransfer* pTr = qobject_cast<CDownloadTransfer*>(pTransfer);
+		DownloadTransfer* pTr = qobject_cast<DownloadTransfer*>( pTransfer );
 
-		if( pTr )
+		if ( pTr )
 		{
-			pTr->subtractRequested(oPossible);
+			pTr->subtractRequested( oPossible );
 
-			if( oPossible.empty() )
+			if ( oPossible.empty() )
+			{
 				break;
+			}
 		}
 	}
 
 	return oPossible;
 }
 
-void CDownload::saveState()
+void Download::saveState()
 {
 	QString sFileName = quazaaSettings.Downloads.IncompletePath + "/" + m_sTempName;
 	QString sFileNameT = sFileName;
 
-	sFileName.append(".!qd");
-	sFileNameT.append(".bak");
+	sFileName.append( ".!qd" );
+	sFileNameT.append( ".bak" );
 
-	QFile f(sFileNameT);
+	QFile f( sFileNameT );
 
-	if( f.open(QFile::WriteOnly) )
+	if ( f.open( QFile::WriteOnly ) )
 	{
-		QDataStream s(&f);
+		QDataStream s( &f );
 
 		s << *this;
 
 		f.close();
 
-		QFile::remove(sFileName);
-		QFile::rename(sFileNameT, sFileName);
+		QFile::remove( sFileName );
+		QFile::rename( sFileNameT, sFileName );
 
 		m_bModified = false;
 	}
 }
 
-void CDownload::setState(CDownload::DownloadState state)
+void Download::setState( Download::DownloadState state )
 {
 	m_nState = state;
-	emit stateChanged(state);
+	emit stateChanged( state );
 }
 
 // Invoked by download model
 // let the download go to the model first, giving a chance to connect signals to corresponding objects
 // then request sources for this download, so model can stay in sync
-void CDownload::emitSources()
+void Download::emitSources()
 {
-	if( !m_bSignalSources )
+	if ( !m_bSignalSources )
 	{
 		m_bSignalSources = true;
-		foreach(CDownloadSource* pSource, m_lSources)
+		foreach ( DownloadSource * pSource, m_lSources )
 		{
-			emit sourceAdded(pSource);
+			emit sourceAdded( pSource );
 		}
 	}
 }

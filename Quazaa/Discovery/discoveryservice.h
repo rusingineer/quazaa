@@ -25,6 +25,10 @@
 #ifndef DISCOVERYSERVICE_H
 #define DISCOVERYSERVICE_H
 
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QStringList>
+#include <QUrlQuery>
 #include <QDataStream>
 #include <QReadWriteLock>
 #include <QUrl>
@@ -33,16 +37,15 @@
 #include "discovery.h"
 
 // Requirements of all subclasses
-#include "hostcache.h"
+#include "g2hostcache.h"
 #include "commonfunctions.h"
-#include "timedsignalqueue.h"
-
-//TODO: Hunt down QObject::startTimer: QTimer can only be used with threads started with QThread
+#include "Misc/timedsignalqueue.h"
+#include "quazaaglobals.h"
 
 namespace Discovery
 {
 
-class CDiscoveryService : public QObject
+class DiscoveryService : public QObject
 {
 	Q_OBJECT
 
@@ -52,9 +55,10 @@ class CDiscoveryService : public QObject
 protected:
 	mutable QReadWriteLock m_oRWLock;      // Service access lock.
 //	mutable CDebugRWLock   m_oRWLock;      // Enable this for debugging purposes.
-	TServiceType           m_nServiceType; // GWC, UKHL, ...
-	CNetworkType           m_oNetworkType; // could be several in case of GWC for instance
+	ServiceType::Type      m_nServiceType; // GWC, UKHL, ...
+	NetworkType            m_oNetworkType; // could be several in case of GWC for instance
 	QUrl                   m_oServiceURL;
+	QUrl                   m_oRedirectUrl;
 	QString                m_sPong;        // The service's reply to a ping request
 
 	bool                   m_bQuery;       // last request was a query (false: [...]an update)
@@ -65,24 +69,24 @@ private:
 	quint8          m_nProbaMult;   // probability multiplicator: [0-5] based on rating
 
 	bool            m_bZero;        // service probability has just been increased from zero or
-									// service is new. On access failure, this service will be set
-									// to 0 probability no matter its previous proba. For banned
-									// hosts, this indicates the host has been banned because of too
-									// many failures.
-	TServiceID      m_nID;          // ID used by the manager to identify the service; 0:invalid
+	// service is new. On access failure, this service will be set
+	// to 0 probability no matter its previous proba. For banned
+	// hosts, this indicates the host has been banned because of too
+	// many failures.
+	ServiceID       m_nID;          // ID used by the manager to identify the service; 0:invalid
 
 	quint16         m_nLastHosts;   // number of hosts returned by the service on last query
 	quint32         m_nTotalHosts;  // all hosts we ever got from the service
 	quint16         m_nAltServices; // alternate services known to the service passed on to us when
-									// last we queried
-									// TODO: implement.
+	// last we queried
 	quint32         m_tLastAccessed;// last time we queried/updated the service
-									// Note: for banned services, this holds the ban time
-									// TODO: implement.
+	// Note: for banned services, this holds the ban time
 	quint32         m_tLastSuccess; // last time we accessed the service successfully
 	quint8          m_nFailures;    // query failures in a row
 	quint8          m_nZeroRevivals;// counts number of times this service has been revived from a
-									// 0 rating.
+	// 0 rating.
+
+	quint8          m_nRedirectCount;
 
 	bool            m_bRunning;     // service is currently doing network communication
 
@@ -98,19 +102,19 @@ public:
 	 * @param oNType
 	 * @param nRating
 	 */
-	CDiscoveryService(const QUrl& oURL, const CNetworkType& oNType,
-					  quint8 nRating = DISCOVERY_MAX_PROBABILITY);
+	DiscoveryService( const QUrl& oURL, const NetworkType& oNType,
+					  quint8 nRating = DISCOVERY_MAX_PROBABILITY );
 
 	/**
 	 * @brief CDiscoveryService: Copy constructor. Copies all but the list of registered pointers.
 	 * @param pService
 	 */
-	CDiscoveryService(const CDiscoveryService& pService);
+	DiscoveryService( const DiscoveryService& pService );
 
 	/**
 	 * @brief ~CDiscoveryService
 	 */
-	virtual ~CDiscoveryService(); /** Must be implemented by subclasses. */
+	virtual ~DiscoveryService(); /** Must be implemented by subclasses. */
 
 private:
 	/* ========================================================================================== */
@@ -123,7 +127,7 @@ private:
 	 * @param pService
 	 * @return
 	 */
-	virtual bool	operator==(const CDiscoveryService& pService) const;
+	virtual bool	operator==( const DiscoveryService& pService ) const;
 
 	/**
 	 * @brief operator !=: Allows to compare two services. Services are considered to be equal if
@@ -132,7 +136,7 @@ private:
 	 * @param pService
 	 * @return
 	 */
-	bool			operator!=(const CDiscoveryService& pService) const;
+	bool			operator!=( const DiscoveryService& pService ) const;
 
 	/* ========================================================================================== */
 	/* ===================================== Static Methods ===================================== */
@@ -145,7 +149,7 @@ private:
 	 * @param fsStream
 	 * @param nVersion
 	 */
-	static void load(CDiscoveryService*& pService, QDataStream& fsFile, const int nVersion);
+	static void load( DiscoveryService*& pService, QDataStream& fsFile, const int nVersion );
 
 	/**
 	 * @brief save writes pService to given QDataStream.
@@ -153,10 +157,11 @@ private:
 	 * @param pService
 	 * @param fsFile
 	 */
-	static void save(const CDiscoveryService* const pService, QDataStream& fsFile);
+	static void save( const DiscoveryService* const pService, QDataStream& fsFile );
 
 	/**
-	 * @brief createService allows to create valid services.
+	 * @brief createService allows to create valid services. Note that new services are marked as
+	 * having been zero so they will be downgraded fast if found non functional.
 	 * Locking: / (static member)
 	 * @param sURL
 	 * @param eSType
@@ -165,8 +170,8 @@ private:
 	 * @return
 	 */
 	/** Must be modified when writing subclasses. */
-	static CDiscoveryService* createService(const QString &sURL, TServiceType eSType,
-											const CNetworkType& oNType, quint8 nRating);
+	static DiscoveryService* createService( const QString& sURL, ServiceType::Type eSType,
+											const NetworkType& oNType, quint8 nRating );
 
 	/* ========================================================================================== */
 	/* ======================================= Operations ======================================= */
@@ -192,13 +197,13 @@ private slots:
 	 * Locking: RW
 	 */
 	void cancelRequest();
-	void cancelRequest(bool);
+	void cancelRequest( bool );
 
 signals:
 	/**
 	 * @brief updated informs the GUI about a noticable change in this service.
 	 */
-	void updated(TServiceID nID);
+	void updated( ServiceID nID );
 
 	/* ========================================================================================== */
 	/* ==================================== Attribute Access ==================================== */
@@ -218,18 +223,18 @@ public:
 	void unlock() const;
 
 	/**
-	 * @brief serviceType
+	 * @brief ServiceType::Type
 	 * Requires locking: R
 	 * @return
 	 */
-	inline TServiceType serviceType() const;
+	inline ServiceType::Type serviceType() const;
 
 	/**
 	 * @brief networkType
 	 * Requires locking: R
 	 * @return
 	 */
-	inline CNetworkType networkType() const;
+	inline NetworkType networkType() const;
 
 	/**
 	 * @brief type
@@ -281,7 +286,7 @@ public:
 	 * Requires locking: R
 	 * @return
 	 */
-	inline TServiceID id() const;
+	inline ServiceID id() const;
 
 	/**
 	 * @brief lastHosts
@@ -317,7 +322,7 @@ protected:
 	 * Requires locking: RW
 	 * @param tNow
 	 */
-	inline void setLastAccessed(quint32 tNow);
+	inline void setLastAccessed( quint32 tNow );
 
 public:
 	/**
@@ -352,12 +357,17 @@ protected:
 	/* ========================================================================================== */
 	/* ============================= Specialized Attribute Setters  ============================= */
 	/* ========================================================================================== */
+
 	/**
-	 * @brief updateStatistics updates statistics, failure counters etc.
+	 * @brief updateStatistics: Updates statistics, failure counters etc.
 	 * Requires locking: RW
+	 * @param bCanceled
 	 * @param nHosts
+	 * @param nURLs
+	 * @param bUpdateOK
 	 */
-	void updateStatistics(quint16 nHosts = 0, quint16 nURLs = 0, bool bUpdateOK = false);
+	void updateStatistics( bool bCanceled, quint16 nHosts = 0, quint16 nURLs = 0,
+						   bool bUpdateOK = false );
 
 private:
 	/**
@@ -365,10 +375,10 @@ private:
 	 * Requires locking: RW
 	 * @param nRating
 	 */
-	void setRating(quint8 nRating);
+	void setRating( quint8 nRating );
 
 	/* ========================================================================================== */
-	/* ==================================== Private Helpers  ==================================== */
+	/* =================================== Protected Helpers  =================================== */
 	/* ========================================================================================== */
 protected:
 	/**
@@ -379,7 +389,15 @@ protected:
 	 * @param bDebug Defaults to false. If set to true, the message is send  to qDebug() instead of
 	 * to the system log.
 	 */
-	void postLog(LogSeverity::Severity severity, QString message, bool bDebug = false);
+	void postLog( LogSeverity severity, QString message, bool bDebug = false );
+
+	/**
+	 * @brief handleRedirect detects redirects on network requests and follows them.
+	 * @param pReply : the server reply
+	 * @param pRequest : the old request - will be changed if redirection is detected
+	 * @return true on redirect; false otherwise
+	 */
+	bool handleRedirect( QNAMPtr pNAMgr, QNetworkReply* pReply, QNetworkRequest*& pRequest );
 
 	/* ========================================================================================== */
 	/* ==================================== Private Virtuals ==================================== */
@@ -408,92 +426,92 @@ private:
 	/* ========================================================================================== */
 	/* ===================================== Friend Classes ===================================== */
 	/* ========================================================================================== */
-	friend class CDiscovery;
+	friend class Manager;
 };
 
-TServiceType CDiscoveryService::serviceType() const
+ServiceType::Type DiscoveryService::serviceType() const
 {
 	return m_nServiceType;
 }
 
-CNetworkType CDiscoveryService::networkType() const
+NetworkType DiscoveryService::networkType() const
 {
 	return m_oNetworkType;
 }
 
-QString CDiscoveryService::url() const
+QString DiscoveryService::url() const
 {
 	return m_oServiceURL.toString();
 }
 
-QString CDiscoveryService::pong() const
+QString DiscoveryService::pong() const
 {
 	return m_sPong;
 }
 
-quint8 CDiscoveryService::rating() const
+quint8 DiscoveryService::rating() const
 {
 	return m_nRating;
 }
 
-bool CDiscoveryService::isBanned() const
+bool DiscoveryService::isBanned() const
 {
 	return m_bBanned;
 }
 
 #if ENABLE_DISCOVERY_DEBUGGING
-quint8 CDiscoveryService::probaMult() const
+quint8 DiscoveryService::probaMult() const
 {
 	return m_nProbaMult;
 }
 #endif
 
-TServiceID CDiscoveryService::id() const
+ServiceID DiscoveryService::id() const
 {
 	return m_nID;
 }
 
-quint32 CDiscoveryService::lastHosts() const
+quint32 DiscoveryService::lastHosts() const
 {
 	return m_nLastHosts;
 }
 
-quint32 CDiscoveryService::totalHosts() const
+quint32 DiscoveryService::totalHosts() const
 {
 	return m_nTotalHosts;
 }
 
-quint16 CDiscoveryService::altServices() const
+quint16 DiscoveryService::altServices() const
 {
 	return m_nAltServices;
 }
 
-quint32 CDiscoveryService::lastAccessed() const
+quint32 DiscoveryService::lastAccessed() const
 {
 	return m_tLastAccessed;
 }
 
-void CDiscoveryService::setLastAccessed(quint32 tNow)
+void DiscoveryService::setLastAccessed( quint32 tNow )
 {
 	m_tLastAccessed = tNow;
 }
 
-quint32 CDiscoveryService::lastSuccess() const
+quint32 DiscoveryService::lastSuccess() const
 {
 	return m_tLastSuccess;
 }
 
-quint8 CDiscoveryService::failures() const
+quint8 DiscoveryService::failures() const
 {
 	return m_nFailures;
 }
 
-bool CDiscoveryService::isRunning() const
+bool DiscoveryService::isRunning() const
 {
 	return m_bRunning;
 }
 
-void CDiscoveryService::resetRunning()
+void DiscoveryService::resetRunning()
 {
 	m_bRunning = false;
 }

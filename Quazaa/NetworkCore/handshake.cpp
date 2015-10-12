@@ -36,110 +36,122 @@
 
 #include "debug_new.h"
 
-CHandshake::CHandshake(QObject* parent)
-	: CNetworkConnection(parent)
+Handshake::Handshake( QObject* parent )
+	: NetworkConnection( parent )
 {
 }
-CHandshake::~CHandshake()
+Handshake::~Handshake()
 {
-	ASSUME_LOCK(Handshakes.m_pSection);
+	ASSUME_LOCK( handshakes.m_pSection );
 
-	Handshakes.removeHandshake(this);
+	handshakes.removeHandshake( this );
 }
 
-void CHandshake::onTimer(quint32 tNow)
+void Handshake::onTimer( quint32 tNow )
 {
-	if(tNow - m_tConnected > 15)
+	if ( tNow - m_tConnected > 15 )
 	{
-		systemLog.postLog(LogSeverity::Debug, QString("Timed out handshaking with  %1").arg(m_pSocket->peerAddress().toString().toLocal8Bit().constData()));
+		systemLog.postLog( LogSeverity::Debug, Component::Network,
+						   tr( "Timed out handshaking with  %1"
+							   ).arg( address().toString() ) );
 		close();
 	}
 }
-void CHandshake::onRead()
+void Handshake::onRead()
 {
-	QMutexLocker l(&Handshakes.m_pSection);
+	QMutexLocker l( &handshakes.m_pSection );
 
 	//qDebug() << "CHandshake::OnRead()";
 
-	if(bytesAvailable() < 8)
+	if ( bytesAvailable() < 8 )
 	{
 		return;
 	}
 
-	if(peek(8).startsWith("GNUTELLA"))
+	if ( peek( 8 ).startsWith( "GNUTELLA" ) )
 	{
-		systemLog.postLog(LogSeverity::Debug, QString("Incoming connection from %1 is Gnutella Neighbour connection").arg(m_pSocket->peerAddress().toString().toLocal8Bit().constData()));
-		//qDebug("Incoming connection from %s is Gnutella Neighbour connection", m_pSocket->peerAddress().toString().toLocal8Bit().constData());
-		Handshakes.processNeighbour(this);
+#if LOG_CONNECTIONS
+		systemLog.postLog( LogSeverity::Debug, Component::Network,
+						   QString( "Incoming connection from %1 is Gnutella Neighbour connection"
+								  ).arg( m_pSocket->peerAddress().toString() ) );
+#endif
+		qDebug() << m_oAddress.toStringWithPort() << " - Handshake::onRead() - Recieved messige starts with \"GNUTELLA\"";
+		handshakes.processNeighbour( this );
 		delete this;
 	}
-	else if(peek(5).startsWith("GET /"))
+	else if ( peek( 5 ).startsWith( "GET /" ) )
 	{
-		if( peek(bytesAvailable()).indexOf("\r\n\r\n") != -1 )
+		if ( peek( bytesAvailable() ).indexOf( "\r\n\r\n" ) != -1 )
 		{
-			systemLog.postLog(LogSeverity::Debug, QString("Incoming connection from %1 is a Web request").arg(m_pSocket->peerAddress().toString().toLocal8Bit().constData()));
+#if LOG_CONNECTIONS
+			systemLog.postLog( LogSeverity::Debug, Component::Network,
+							   QString( "Incoming connection from %1 is a Web request"
+									  ).arg( m_pSocket->peerAddress().toString() ) );
+#endif
 			onWebRequest();
 		}
 	}
 	else
 	{
-		systemLog.postLog(LogSeverity::Debug, QString("Closing connection with %1 - unknown protocol").arg(m_pSocket->peerAddress().toString().toLocal8Bit().constData()));
-		//qDebug("Closing connection with %s - unknown protocol", m_pSocket->peerAddress().toString().toLocal8Bit().constData());
+		systemLog.postLog( LogSeverity::Debug, Component::Network,
+						   QString( "Closing connection with %1 - unknown protocol"
+								  ).arg( address().toString() ) );
 
 		QByteArray baResp;
 		baResp += "HTTP/1.1 501 Not Implemented\r\n";
-		baResp += "Server: " + CQuazaaGlobals::USER_AGENT_STRING() + "\r\n";
+		baResp += "Server: " + QuazaaGlobals::USER_AGENT_STRING() + "\r\n";
 		baResp += "\r\n";
 
-		write(baResp);
-		close(true);
+		write( baResp );
+		close( true );
 	}
 }
 
-void CHandshake::onConnectNode()
+void Handshake::onConnectNode()
 {
 
 }
-void CHandshake::onDisconnectNode()
+void Handshake::onDisconnectNode()
 {
-	Handshakes.m_pSection.lock();
+	handshakes.m_pSection.lock();
 	delete this;
-	Handshakes.m_pSection.unlock();
+	handshakes.m_pSection.unlock();
 }
-void CHandshake::onError(QAbstractSocket::SocketError e)
+void Handshake::onError( QAbstractSocket::SocketError e )
 {
-	Q_UNUSED(e);
-	Handshakes.m_pSection.lock();
+	Q_UNUSED( e );
+	handshakes.m_pSection.lock();
 	delete this;
-	Handshakes.m_pSection.unlock();
+	handshakes.m_pSection.unlock();
 }
 
-void CHandshake::onStateChange(QAbstractSocket::SocketState s)
+void Handshake::onStateChange( QAbstractSocket::SocketState s )
 {
-	Q_UNUSED(s);
+	Q_UNUSED( s );
 }
 
-void CHandshake::onWebRequest()
+void Handshake::onWebRequest()
 {
 	QString sRequest;
 
-	sRequest = read(bytesAvailable());
-	sRequest = sRequest.left(sRequest.indexOf("\r\n\r\n"));
+	sRequest = read( bytesAvailable() );
+	sRequest = sRequest.left( sRequest.indexOf( "\r\n\r\n" ) );
 
-	QStringList arrLines = sRequest.split("\r\n");
+	QStringList arrLines = sRequest.split( "\r\n" );
 
-	if( arrLines[0].startsWith("GET / HTTP") )
+	if ( arrLines[0].startsWith( "GET / HTTP" ) )
 	{
 		QByteArray baResp;
 
 		baResp += "HTTP/1.1 200 OK\r\n";
-		baResp += "Server: " + CQuazaaGlobals::USER_AGENT_STRING() + "\r\n";
+		baResp += "Server: " + QuazaaGlobals::USER_AGENT_STRING() + "\r\n";
 		baResp += "Connection: close\r\n";
 		baResp += "Content-Type: text/html; charset=utf-8\r\n";
 
 
 		QByteArray baHtml;
-		baHtml += "<!DOCTYPE html><html><head><title>Quazaa " + CQuazaaGlobals::APPLICATION_VERSION_STRING() + " : Node Information</title>";
+		baHtml += "<!DOCTYPE html><html><head><title>Quazaa " + QuazaaGlobals::APPLICATION_VERSION_STRING() +
+				  " : Node Information</title>";
 		baHtml += "<link href=\"/res/favicon.ico\" rel=\"shortcut icon\" type=\"image/vnd.microsoft.icon\" />";
 		baHtml += "<meta name=\"robots\" content=\"noindex,nofollow\"></head>";
 		baHtml += "<body style=\"color:white;background-color:rgb(12,26,43);padding-left:12px;padding-right:12px;\">";
@@ -147,7 +159,8 @@ void CHandshake::onWebRequest()
 		baHtml += "<div style=\"height:130px;border:1px solid rgb(197,197,197);border-bottom:0px;border-radius:6px 6px 0px 0px;background:url('/res/header_background.png') no-repeat scroll left top rgb(0,102,152);\">";
 		baHtml += "<a href=\"http://quazaa.sf.net\"><img src=\"/res/QuazaaLogo.png\"></a></div>";
 		baHtml += "<div style=\"color:rgb(51,51,51);background-color:white;border:1px solid rgb(197,197,197);border-top:0px;border-radius:0px 0px 6px 6px;padding:14px 20px 12px;\">";
-		baHtml += "This node is powered by <a href=\"http://quazaa.sf.net\">Quazaa " + CQuazaaGlobals::APPLICATION_VERSION_STRING() + "</a>.</div></div>";
+		baHtml += "This node is powered by <a href=\"http://quazaa.sf.net\">Quazaa " +
+				  QuazaaGlobals::APPLICATION_VERSION_STRING() + "</a>.</div></div>";
 		baHtml += "<div style=\"border:1px solid rgb(197,197,197);box-shadow:0px 0px 8px rgb(189,189,189);border-radius:6px;margin-bottom:15px;margin-left:15px;margin-right:15px;\">";
 		baHtml += "<div style=\"text-align:center;color:white;background-color:rgb(34,34,34);border-radius:6px 6px 0px 0px;padding:14px 20px 12px;\">";
 		baHtml += "What is <a href=\"http://quazaa.sf.net\">Quazaa</a>?</div>";
@@ -157,31 +170,34 @@ void CHandshake::onWebRequest()
 		baHtml += "This node is currently connected to the following nodes:<table width=\"100%\" cellspacing=\"0\">";
 		baHtml += "<b><tr><th>Address</th><th>Time</th><th>Mode</th><th>Leaves</th><th>Client</th></tr></b>";
 
-		Neighbours.m_pSection.lock();
+		neighbours.m_pSection.lock();
 
-		quint32 tNow = time(0);
+		quint32 tNow = time( 0 );
 
-		for( QList<CNeighbour*>::iterator it = Neighbours.begin(); it != Neighbours.end(); it++ )
+		for ( QList<Neighbour*>::iterator it = neighbours.begin(); it != neighbours.end(); it++ )
 		{
-			if( (*it)->m_nState != nsConnected )
-				continue;
-
-			baHtml += "<tr><td style=\"text-align:center;\"><a href=\"http://" + (*it)->address().toStringWithPort() + "\">" + (*it)->address().toStringWithPort() + "</a></td>";
-
-			quint32 tConnected = tNow - (*it)->m_tConnected;
-			baHtml += "<td style=\"text-align:center;\">" + QString().sprintf( "%.2u:%.2u:%.2u", tConnected / 3600,
-												 tConnected % 3600 / 60, ( tConnected % 3600 ) % 60 ) + "</td>";
-
-			if( (*it)->m_nProtocol == dpG2 )
+			if ( ( *it )->m_nState != nsConnected )
 			{
-				CG2Node* pG2 = static_cast<CG2Node*>(*it);
+				continue;
+			}
 
-				baHtml += "<td style=\"text-align:center;\">" + QString((pG2->m_nType == G2_HUB ? "G2 Hub" : "G2 Leaf")) + "</td>";
+			baHtml += "<tr><td style=\"text-align:center;\"><a href=\"http://" + ( *it )->address().toStringWithPort() + "\">" +
+					  ( *it )->address().toStringWithPort() + "</a></td>";
+
+			quint32 tConnected = tNow - ( *it )->connectTime();
+			baHtml += "<td style=\"text-align:center;\">" + QString().sprintf( "%.2u:%.2u:%.2u", tConnected / 3600,
+																			   tConnected % 3600 / 60, ( tConnected % 3600 ) % 60 ) + "</td>";
+
+			if ( ( *it )->m_nProtocol == DiscoveryProtocol::G2 )
+			{
+				G2Node* pG2 = static_cast<G2Node*>( *it );
+
+				baHtml += "<td style=\"text-align:center;\">" + QString( ( pG2->m_nType == G2_HUB ? "G2 Hub" : "G2 Leaf" ) ) + "</td>";
 
 				baHtml += "<td style=\"text-align:center;\">";
-				if( pG2->m_nType == G2_HUB )
+				if ( pG2->m_nType == G2_HUB )
 				{
-					baHtml += QString::number(pG2->m_nLeafCount) + "/" + QString::number(pG2->m_nLeafMax);
+					baHtml += QString::number( pG2->m_nLeafCount ) + "/" + QString::number( pG2->m_nLeafMax );
 				}
 				else
 				{
@@ -193,60 +209,60 @@ void CHandshake::onWebRequest()
 			{
 				baHtml += "<td style=\"text-align:center;\">&nbsp;</td><td style=\"text-align:center;\">&nbsp;</td>";
 			}
-			baHtml += "<td style=\"text-align:center;\">" + (*it)->m_sUserAgent + "</td>";
+			baHtml += "<td style=\"text-align:center;\">" + ( *it )->m_sUserAgent + "</td>";
 			baHtml += "</tr>";
 		}
 
-		Neighbours.m_pSection.unlock();
+		neighbours.m_pSection.unlock();
 
 		baHtml += "</table></div></body></html>";
 
-		baResp += "Content-length: " + QString(baHtml.length()) + "\r\n";
+		baResp += "Content-length: " + QString( baHtml.length() ) + "\r\n";
 		baResp += "\r\n";
 
-		write(baResp);
-		write(baHtml);
+		write( baResp );
+		write( baHtml );
 	}
 	else
 	{
 		QByteArray baResp;
 
-		QString sPath = arrLines[0].mid(4, arrLines[0].length() - 12).trimmed();
+		QString sPath = arrLines[0].mid( 4, arrLines[0].length() - 12 ).trimmed();
 
 		bool bFound = false;
 
-		if(sPath.startsWith("/res")) // redirect /res prefixed URIs to the resource system, anything not prefixed will go to uploads
+		if ( sPath.startsWith( "/res" ) ) // redirect /res prefixed URIs to the resource system, anything not prefixed will go to uploads
 		{
-			sPath = ":/Resource/Web" + sPath.mid(4);
+			sPath = ":/Resource/Web" + sPath.mid( 4 );
 
-			QFile f(sPath);
+			QFile f( sPath );
 
-			if( f.exists() )
+			if ( f.exists() )
 			{
-				if( f.open(QIODevice::ReadOnly) )
+				if ( f.open( QIODevice::ReadOnly ) )
 				{
 					bFound = true;
 
 					baResp += "HTTP/1.1 200 OK\r\n";
-					baResp += "Server: " + CQuazaaGlobals::USER_AGENT_STRING() + "\r\n";
+					baResp += "Server: " + QuazaaGlobals::USER_AGENT_STRING() + "\r\n";
 					baResp += "Connection: close\r\n";
-					baResp += "Content-Length: " + QString::number(f.size()) + "\r\n";
+					baResp += "Content-Length: " + QString::number( f.size() ) + "\r\n";
 					baResp += "\r\n";
 
 					baResp += f.readAll();
 					f.close();
 
-					write(baResp);
+					write( baResp );
 				}
 			}
 		}
 
 		// TODO: Handle P2P uploads here
 
-		if( !bFound )
+		if ( !bFound )
 		{
 			baResp += "HTTP/1.1 404 Not found\r\n";
-			baResp += "Server: " + CQuazaaGlobals::USER_AGENT_STRING() + "\r\n";
+			baResp += "Server: " + QuazaaGlobals::USER_AGENT_STRING() + "\r\n";
 			baResp += "Connection: close\r\n";
 			baResp += "Content-Type: text/plain\r\n";
 			baResp += "\r\n";
@@ -254,9 +270,9 @@ void CHandshake::onWebRequest()
 #ifdef _DEBUG
 			baResp += sPath;
 #endif
-			write(baResp);
+			write( baResp );
 		}
 	}
-	close(true);
+	close( true );
 
 }

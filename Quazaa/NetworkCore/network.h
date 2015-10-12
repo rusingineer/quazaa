@@ -30,15 +30,19 @@
 #include "types.h"
 #include "routetable.h"
 
-// TODO: rename external variables
+// Note: quazaaglobals.h contains preprocessor defines for debug output.
+#include "quazaaglobals.h"
 
 class QTimer;
 class CThread;
 class G2Packet;
+class ManagedSearch;
 
-class CManagedSearch;
-
-class CNetwork : public QObject
+/**
+ * @brief The NetworkG2 class represents the Gnutella2 network within Quazaa. It allows to connect
+ * to and disconnect from the network and manages the G2 network thread.
+ */
+class NetworkG2 : public QObject
 {
 	Q_OBJECT
 
@@ -48,34 +52,49 @@ public:
 public:
 	bool             m_bActive;
 	QTimer*          m_pSecondTimer;
-	CEndPoint	     m_oAddress;
+	EndPoint	     m_oAddress;
 
-	CRouteTable      m_oRoutingTable;
+	RouteTable       m_oRoutingTable;
 	quint32          m_tCleanRoutesNext;
 
 	bool             m_bSharesReady;
 
 public:
-	CNetwork(QObject* parent = 0);
-	~CNetwork();
+	NetworkG2( QObject* parent = 0 );
+	~NetworkG2();
 
+	/**
+	 * @brief start Starts the G2 network thread and connects to the network if the network has not
+	 * already been started.
+	 */
 	void start();
+
+	/**
+	 * @brief NetworkG2::stop Disconnects from the G2 network and stops the network thread if it is
+	 * currently active.
+	 */
 	void stop();
 
-	void acquireLocalAddress(QString& sHeader);
-	bool isListening();
-	bool isFirewalled();
+	/**
+	 * @brief acquireLocalAddress tries to set our own IP to the IP in sHeader.
+	 * @param sHeader : String representation of the IP without port
+	 * @return true if IP could be parsed; false otherwise
+	 */
+	bool acquireLocalAddress( const QString& sHeader );
 
-	bool routePacket(QUuid& pTargetGUID, G2Packet* pPacket, bool bLockNeighbours = false, bool bBuffered = true);
-	bool routePacket(G2Packet* pPacket, CG2Node* pNbr = 0);
+	bool isListening() const;
+	bool isFirewalled() const;
 
-	inline CEndPoint getLocalAddress()
+	bool routePacket( const QUuid& pTargetGUID, G2Packet* pPacket, bool bLockNeighbours = false,
+					  bool bBuffered = true );
+	bool routePacket( G2Packet* pPacket, G2Node* pNbr = NULL );
+
+	inline const EndPoint& localAddress() const
 	{
 		return m_oAddress;
 	}
 
-
-	bool isConnectedTo(CEndPoint addr);
+	bool isConnectedTo( const EndPoint& addr ) const;
 
 public slots:
 	void onSecondTimer();
@@ -83,7 +102,7 @@ public slots:
 	void setupThread();
 	void cleanupThread();
 
-	void connectToNode(CEndPoint& addr);
+	void connectToNode( const EndPoint& addr );
 
 	void onSharesReady();
 
@@ -91,6 +110,6 @@ signals:
 	void localAddressChanged();
 };
 
-extern CNetwork Network;
-extern CThread NetworkThread;
+extern NetworkG2 networkG2;
+extern CThread networkThread;
 #endif // NETWORK_H

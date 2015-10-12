@@ -30,11 +30,11 @@
 #include "tableview.h"
 #include "securityfiltermodel.h"
 
-class CSecurityTableModel;
+class SecurityTableModel;
 
 namespace Ui
 {
-	class CWidgetSecurity;
+class CWidgetSecurity;
 }
 
 class CWidgetSecurity : public QMainWindow
@@ -42,28 +42,30 @@ class CWidgetSecurity : public QMainWindow
 	Q_OBJECT
 
 public:
-	CSecurityTableModel* m_lSecurity;
+	SecurityTableModel*  m_lSecurity;
 
 private:
 	Ui::CWidgetSecurity* ui;
-	QMenu* m_pSecurityMenu;
-	CTableView* tableViewSecurity;
-	CTableView* tableViewSecurityAuto;
+	QMenu*               m_pSecurityMenu;
+	CTableView*          m_pTableViewSecurity;
+	CTableView*          m_pTableViewSecurityAuto;
 	SecurityFilterModel* m_lManual;
 	SecurityFilterModel* m_lAutomatic;
 
 public:
-	CWidgetSecurity(QWidget* parent = 0);
+	CWidgetSecurity( QWidget* parent = 0 );
 	virtual ~CWidgetSecurity();
 
 	void		saveWidget();
 
 protected:
-	virtual void changeEvent(QEvent* e);
-	virtual void keyPressEvent(QKeyEvent *event);
+	virtual void changeEvent( QEvent* e );
+	virtual void keyPressEvent( QKeyEvent* event );
 
-public slots:
-	void update();
+private:
+	QModelIndexList getSelectedItems( SecurityFilterModel*& pFilterModel ) const;
+	QModelIndexList getSelectedItems( SecurityFilterModel*& pFilterModel,
+									  CTableView*& pTableView ) const;
 
 private slots:
 	void on_actionSecurityAddRule_triggered();
@@ -73,12 +75,12 @@ private slots:
 	void on_actionSecurityExportRules_triggered();
 	void on_actionSubscribeSecurityList_triggered();
 
-	void tableViewSecurity_doubleClicked(const QModelIndex &index);
-	void tableViewSecurity_clicked(const QModelIndex &index);
+	void tableViewSecurity_doubleClicked( const QModelIndex& index );
+	void tableViewSecurity_clicked( const QModelIndex& index );
 
 	void setSkin();
-	void tableViewSecurity_customContextMenuRequested(const QPoint &pos);
-	void tableViewSecurityAuto_customContextMenuRequested(const QPoint &pos);
+	void tableViewSecurity_customContextMenuRequested( const QPoint& pos );
+	void tableViewSecurityAuto_customContextMenuRequested( const QPoint& pos );
 };
 
 #endif // WIDGETSECURITY_H
